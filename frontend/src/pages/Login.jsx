@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Trash2, Lock, Mail, AlertCircle, ArrowRight, Shield, Truck, User, Sparkles } from 'lucide-react';
+import { Trash2, Lock, Mail, AlertCircle, ArrowRight, Shield, Truck, User, Sparkles, Recycle } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -23,6 +23,7 @@ export default function Login() {
       const user = await login(loginEmail, loginPassword);
       if (user.role === 'admin') navigate('/admin');
       else if (user.role === 'collector') navigate('/collector');
+      else if (user.role === 'recycling_center') navigate('/recycling');
       else navigate('/citizen');
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Invalid email or password.');
@@ -55,7 +56,7 @@ export default function Login() {
           <p className="text-xs text-slate-500">Smart Waste Management Command & Operations</p>
         </div>
 
-        {/* 1-Click Quick Demo Sign In Bar */}
+        {/* 1-Click Quick Demo Sign In Bar for all 4 Roles */}
         <div className="p-4 rounded-2xl bg-slate-900 text-white space-y-2.5 shadow-md">
           <div className="flex items-center justify-between text-[11px] font-bold text-emerald-400">
             <span className="flex items-center gap-1.5">
@@ -65,35 +66,45 @@ export default function Login() {
             <span className="text-[10px] text-slate-400 font-normal">Click any role below</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="grid grid-cols-4 gap-1.5 text-xs">
             <button
               type="button"
               onClick={() => handleInstantDemoLogin('admin@swms.com', 'admin123')}
               disabled={loading}
-              className="py-2.5 px-2 rounded-xl bg-slate-800 hover:bg-rose-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-rose-500 active:scale-95"
+              className="py-2 px-1 rounded-xl bg-slate-800 hover:bg-rose-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-rose-500 active:scale-95"
             >
               <Shield className="w-4 h-4 text-rose-400" />
-              <span className="text-[11px]">Admin</span>
+              <span className="text-[10px]">Admin</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleInstantDemoLogin('collector@swms.com', 'collector123')}
               disabled={loading}
-              className="py-2.5 px-2 rounded-xl bg-slate-800 hover:bg-amber-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-amber-500 active:scale-95"
+              className="py-2 px-1 rounded-xl bg-slate-800 hover:bg-amber-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-amber-500 active:scale-95"
             >
               <Truck className="w-4 h-4 text-amber-400" />
-              <span className="text-[11px]">Collector</span>
+              <span className="text-[10px]">Collector</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleInstantDemoLogin('citizen@swms.com', 'citizen123')}
               disabled={loading}
-              className="py-2.5 px-2 rounded-xl bg-slate-800 hover:bg-blue-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-blue-500 active:scale-95"
+              className="py-2 px-1 rounded-xl bg-slate-800 hover:bg-blue-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-blue-500 active:scale-95"
             >
               <User className="w-4 h-4 text-blue-400" />
-              <span className="text-[11px]">Citizen</span>
+              <span className="text-[10px]">Citizen</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleInstantDemoLogin('recycling@swms.com', 'recycling123')}
+              disabled={loading}
+              className="py-2 px-1 rounded-xl bg-slate-800 hover:bg-emerald-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-emerald-500 active:scale-95"
+            >
+              <Recycle className="w-4 h-4 text-emerald-400" />
+              <span className="text-[10px]">Recycler</span>
             </button>
           </div>
         </div>
@@ -155,11 +166,12 @@ export default function Login() {
 
         {/* Demo Credentials Viva Cheat-Sheet */}
         <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
-          <p className="font-bold text-slate-800">Pre-seeded Demo Accounts (Password: <code>...123</code>):</p>
-          <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
+          <p className="font-bold text-slate-800">Pre-seeded Accounts (Password: <code>...123</code>):</p>
+          <div className="grid grid-cols-2 gap-1 font-mono text-[10px]">
             <span className="p-1 rounded bg-rose-50 text-rose-800 text-center font-bold">admin@swms.com</span>
             <span className="p-1 rounded bg-amber-50 text-amber-800 text-center font-bold">collector@swms.com</span>
             <span className="p-1 rounded bg-blue-50 text-blue-800 text-center font-bold">citizen@swms.com</span>
+            <span className="p-1 rounded bg-emerald-50 text-emerald-800 text-center font-bold">recycling@swms.com</span>
           </div>
         </div>
 
