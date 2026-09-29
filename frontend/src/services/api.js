@@ -128,11 +128,30 @@ export const analyticsAPI = {
   exportReportUrl: (type) => `${API_BASE_URL}/reports/export?type=${type}`,
 };
 
+// Collector Fleet APIs
+export const collectorAPI = {
+  updateLocation: (data) => api.post('/collector/location', data),
+  getVehicle: () => api.get('/collector/vehicle'),
+};
+
+// Citizen Eco-Rewards APIs
+export const rewardsAPI = {
+  getCitizenRewards: () => api.get('/citizen/rewards'),
+};
+
 // Notifications APIs
 export const notificationsAPI = {
   getAll: () => api.get('/notifications'),
   markRead: (id) => api.put(`/notifications/${id}/read`),
   markAllRead: () => api.put('/notifications/read-all'),
+};
+
+// Admin Operations, Diagnostics & Anomaly APIs
+export const adminAPI = {
+  getAnomalies: () => api.get('/admin/anomalies'),
+  getMaintenance: () => api.get('/admin/maintenance'),
+  getAuditLogs: () => api.get('/admin/audit-logs'),
+  getSystemHealth: () => api.get('/admin/system-health'),
 };
 
 export default api;

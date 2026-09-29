@@ -289,7 +289,32 @@ async function recordCollection(req, res) {
     const lat = latitude ? parseFloat(latitude) : request.bin.latitude;
     const lng = longitude ? parseFloat(longitude) : request.bin.longitude;
 
-    // 1. Create collection record
+    // Anti-Fraud GPS Distance Verification
+    const distanceKm = planCollectionRoute ? Math.abs(lat - request.bin.latitude) * 111 : 0;
+    let isVerified = true;
+    let fraudFlag = null;
+
+    if (latitude != null && longitude != null) {
+      // Check if collector is more than 350m away from bin
+      const dLat = (lat - request.bin.latitude) * (Math.PI / 180);
+      const dLon = (lng - request.bin.longitude) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(request.bin.latitude * (Math.PI / 180)) *
+          Math.cos(lat * (Math.PI / 180)) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distMeters = Math.round(6371 * c * 1000);
+
+      if (distMeters > 350) {
+        isVerified = false;
+        fraudFlag = `SUSPICIOUS: Geolocation was ${distMeters}m from registered bin coordinates. Flagged for municipal supervisor audit.`;
+        logger.warn(`Suspicious collection flagged for Task #${request.id}: ${fraudFlag}`);
+      }
+    }
+
+    // 1. Create collection record with verification status
     const record = await prisma.collectionRecord.create({
       data: {
         collection_request_id: request.id,
@@ -299,6 +324,8 @@ async function recordCollection(req, res) {
         proof_image: proofImagePath,
         collection_latitude: lat,
         collection_longitude: lng,
+        is_verified: isVerified,
+        fraud_flag: fraudFlag,
       },
     });
 
@@ -317,6 +344,7 @@ async function recordCollection(req, res) {
       data: {
         current_fill_percentage: 0.0,
         status: 'Normal',
+        last_collected_at: new Date(),
       },
     });
 
@@ -330,41 +358,66 @@ async function recordCollection(req, res) {
       },
     });
 
-    // 5. If recyclable waste, automatically create entry for Recycling Center
-    const recyclableTypes = ['Plastic', 'Paper', 'Glass', 'Metal', 'Organic'];
-    if (recyclableTypes.includes(request.bin.waste_type)) {
-      const recyclingCenters = await prisma.user.findMany({
-        where: { role: 'recycling_center', is_active: true },
+    // 5. Generate traceable unique Waste Batch ID for Recycling Center
+    const batchNumber = `BATCH-SWMS-2026-${String(10000 + (record.id % 90000))}`;
+    const recyclableTypes = ['Plastic', 'Paper', 'Glass', 'Metal', 'Organic', 'All-in-One Multi-Stream AI'];
+
+    const recyclingCenters = await prisma.user.findMany({
+      where: { role: 'recycling_center', is_active: true },
+    });
+
+    if (recyclingCenters.length > 0) {
+      const center = recyclingCenters[0];
+      await prisma.recyclingRecord.create({
+        data: {
+          batch_number: batchNumber,
+          collection_record_id: record.id,
+          recycling_center_id: center.id,
+          waste_type: request.bin.waste_type || 'Mixed Recyclables',
+          quantity: qty,
+          unit: unit || 'kg',
+          recovery_rate: 82.5,
+          status: 'Pending',
+        },
       });
 
-      if (recyclingCenters.length > 0) {
-        const center = recyclingCenters[0];
-        await prisma.recyclingRecord.create({
-          data: {
-            collection_record_id: record.id,
-            recycling_center_id: center.id,
-            waste_type: request.bin.waste_type,
-            quantity: qty,
-            unit: unit || 'kg',
-            status: 'Pending',
-          },
-        });
-
-        await createNotification(
-          center.id,
-          'Incoming Recyclable Shipment',
-          `Collector logged ${qty} ${unit} of ${request.bin.waste_type} waste collected from ${request.bin.bin_code}.`,
-          'recycling'
-        );
-      }
+      await createNotification(
+        center.id,
+        `Incoming Shipment: ${batchNumber}`,
+        `Vehicle logged ${qty} ${unit} from ${request.bin.bin_code}. Batch ID: ${batchNumber}.`,
+        'recycling'
+      );
     }
 
-    logger.info(`Collection completed for Bin ${request.bin.bin_code}: ${qty} kg logged.`);
+    // 6. Real-time WebSocket emission
+    const { emitEvent } = require('../websocket/socketManager');
+    emitEvent('collection:completed', {
+      task_id: request.id,
+      bin_code: request.bin.bin_code,
+      collected_quantity: qty,
+      is_verified: isVerified,
+      fraud_flag: fraudFlag,
+      batch_number: batchNumber,
+    });
+
+    emitEvent('bin:update', {
+      id: request.bin.id,
+      bin_code: request.bin.bin_code,
+      current_fill_percentage: 0.0,
+      status: 'Normal',
+    });
+
+    logger.info(`Collection completed for Bin ${request.bin.bin_code}: ${qty} kg logged. Batch: ${batchNumber}. Verified: ${isVerified}`);
 
     return res.status(201).json({
       success: true,
-      message: 'Waste collection recorded successfully and bin reset.',
+      message: isVerified
+        ? 'Waste collection verified and recorded. Bin reset to 0%.'
+        : 'Collection logged with audit flag (distance mismatch). Submitted for supervisor review.',
       record,
+      batch_number: batchNumber,
+      is_verified: isVerified,
+      fraud_flag: fraudFlag,
     });
   } catch (error) {
     logger.error('Error recording collection', { error: error.message });

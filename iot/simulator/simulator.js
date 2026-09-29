@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 /**
- * SWMS Standalone IoT Telemetry Simulator
- * Allows manual or automated simulation of bin sensor readings.
- * Clearly marks all sent readings as SIMULATED DATA.
+ * SWMS Enterprise IoT Telemetry Simulator (Node.js CLI)
+ * Implements Section 12 Specification:
+ * - Sends data through the EXACT SAME API used by real ESP32 devices (POST /api/iot/bin-reading)
+ * - Supports Multi-Scenario Testing: Normal Day, Festival Waste Spike, Gas Alert, Battery Failure, Sensor Fault, Heavy Rain
+ * - Supports Continuous Automated Simulation
+ * - Clearly tags all data as SIMULATED DATA (is_simulated: true)
  */
 
 const http = require('http');
@@ -11,12 +14,25 @@ const SERVER_HOST = process.env.SWMS_HOST || 'localhost';
 const SERVER_PORT = process.env.SWMS_PORT || 5000;
 const IOT_API_KEY = process.env.IOT_API_KEY || 'swms_iot_device_secure_token_998877';
 
-function sendReading(binCode, fillPercentage, distanceCm) {
+const SCENARIOS = {
+  normal: { fill: 45, gas: 18, battery: 94, sensor: 'OK', label: 'Normal Day' },
+  festival: { fill: 96, gas: 42, battery: 88, sensor: 'OK', label: 'Festival Waste Spike (Urgent Dispatch)' },
+  gas_alert: { fill: 82, gas: 92, battery: 85, sensor: 'OK', label: 'Toxic Gas Decomposition Hazard' },
+  battery_failure: { fill: 40, gas: 15, battery: 8, sensor: 'OK', label: 'Low Battery Maintenance Alert' },
+  sensor_fault: { fill: 0, gas: 0, battery: 75, sensor: 'ERROR', label: 'Transducer Hardware Failure' },
+  heavy_rain: { fill: 88, gas: 38, battery: 78, sensor: 'OK', label: 'Monsoon Heavy Rain Saturation' },
+};
+
+function sendReading(binCode, fillPercentage, gasPpm = 22, batteryLevel = 92, sensorStatus = 'OK') {
+  const distanceCm = Math.max(5, Math.round(100 - fillPercentage));
   const payload = JSON.stringify({
     bin_code: binCode,
-    fill_percentage: fillPercentage,
+    fill_percentage: parseFloat(fillPercentage),
     distance_cm: distanceCm,
-    sensor_status: 'OK',
+    gas_level_ppm: parseFloat(gasPpm),
+    battery_level: parseInt(batteryLevel),
+    temperature: 28.5,
+    sensor_status: sensorStatus,
     is_simulated: true,
   });
 
@@ -32,25 +48,28 @@ function sendReading(binCode, fillPercentage, distanceCm) {
     },
   };
 
-  console.log(`\n📡 [SIMULATED DATA] Sending sensor telemetry for ${binCode}...`);
-  console.log(`   Fill: ${fillPercentage}% | Distance: ${distanceCm}cm | Multi-Stream Segregation: Active`);
+  console.log(`\n📡 [SIMULATED DATA] Transmitting to http://${SERVER_HOST}:${SERVER_PORT}/api/iot/bin-reading...`);
+  console.log(`   Node: ${binCode} | Fill: ${fillPercentage}% | Gas: ${gasPpm} ppm | Battery: ${batteryLevel}% | Status: ${sensorStatus}`);
 
   const req = http.request(options, (res) => {
     let body = '';
     res.on('data', (chunk) => (body += chunk));
     res.on('end', () => {
-      console.log(`   Response Status: ${res.statusCode}`);
       try {
         const json = JSON.parse(body);
-        console.log(`   Result:`, json);
+        if (json.alert_generated) {
+          console.log(`   🚨 [AUTO-DISPATCH ENGINE]: Collection Request #${json.collection_request_id} created with Priority: ${json.priority}!`);
+        } else {
+          console.log(`   ✓ Ingested successfully (Reading #${json.reading_id}). Status: ${json.status}`);
+        }
       } catch {
-        console.log(`   Body:`, body);
+        console.log(`   Response: ${body}`);
       }
     });
   });
 
   req.on('error', (e) => {
-    console.error(`❌ Connection error: ${e.message}`);
+    console.error(`❌ Connection failed: ${e.message}`);
     console.log(`   Ensure backend server is running on http://${SERVER_HOST}:${SERVER_PORT}`);
   });
 
@@ -58,23 +77,50 @@ function sendReading(binCode, fillPercentage, distanceCm) {
   req.end();
 }
 
-// Check arguments: node simulator.js <bin_code> <fill_percentage>
+// Parse Command-Line Arguments
 const args = process.argv.slice(2);
-if (args.length >= 2) {
+
+const scenarioArg = args.find((a) => a.startsWith('--scenario='));
+const isContinuous = args.includes('--continuous');
+
+if (scenarioArg) {
+  const scenarioKey = scenarioArg.split('=')[1].toLowerCase();
+  const scenario = SCENARIOS[scenarioKey] || SCENARIOS.festival;
+  console.log(`=======================================================`);
+  console.log(`  SWMS SCENARIO SIMULATION: ${scenario.label}`);
+  console.log(`=======================================================`);
+  sendReading('BIN-001', scenario.fill, scenario.gas, scenario.battery, scenario.sensor);
+} else if (isContinuous) {
+  console.log(`=======================================================`);
+  console.log(`  SWMS CONTINUOUS MUNICIPAL CITY STREAM (Press Ctrl+C to stop)`);
+  console.log(`=======================================================`);
+  const binCodes = ['BIN-001', 'BIN-002', 'BIN-003', 'BIN-004', 'BIN-005'];
+  let idx = 0;
+  setInterval(() => {
+    const code = binCodes[idx % binCodes.length];
+    const fill = Math.round(20 + Math.random() * 75);
+    const gas = Math.round(10 + Math.random() * 30);
+    const batt = Math.round(80 + Math.random() * 18);
+    sendReading(code, fill, gas, batt, 'OK');
+    idx++;
+  }, 3000);
+} else if (args.length >= 2) {
   const binCode = args[0];
   const fill = parseFloat(args[1]);
-  const dist = Math.round(100 - fill);
-  sendReading(binCode, fill, dist);
+  const gas = args[2] ? parseFloat(args[2]) : 20;
+  const batt = args[3] ? parseInt(args[3]) : 90;
+  sendReading(binCode, fill, gas, batt);
 } else {
-  console.log('==================================================');
-  console.log('  SWMS IoT SENSOR SIMULATOR (SIMULATED DATA)');
-  console.log('==================================================');
+  console.log('=======================================================');
+  console.log('  SWMS IoT TELEMETRY CLI SIMULATOR (ESP32 COMPLIANT)');
+  console.log('=======================================================');
   console.log('Usage:');
-  console.log('  node iot/simulator/simulator.js <BIN_CODE> <FILL_PERCENTAGE>');
-  console.log('Example:');
-  console.log('  node iot/simulator/simulator.js BIN-001 92');
-  console.log('--------------------------------------------------');
-  console.log('Sending default test reading: BIN-001 -> 92% (Critical)');
-  sendReading('BIN-001', 92.0, 8.0, 26.2);
+  console.log('  node iot/simulator/simulator.js <BIN_CODE> <FILL_PERCENTAGE> [GAS_PPM] [BATTERY_%]');
+  console.log('  node iot/simulator/simulator.js --scenario=festival');
+  console.log('  node iot/simulator/simulator.js --scenario=gas_alert');
+  console.log('  node iot/simulator/simulator.js --scenario=battery_failure');
+  console.log('  node iot/simulator/simulator.js --continuous');
+  console.log('-------------------------------------------------------');
+  console.log('Sending default trigger reading: BIN-001 @ 95% (Critical Overflow Auto-Dispatch)');
+  sendReading('BIN-001', 95.0, 48.0, 91, 'OK');
 }
-

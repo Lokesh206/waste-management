@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const { createNotification } = require('../services/notificationService');
+const { emitEvent } = require('../websocket/socketManager');
 const logger = require('../utils/logger');
 
 const prisma = new PrismaClient();
@@ -13,11 +14,11 @@ const VALID_COMPLAINT_STATUSES = [
 ];
 
 /**
- * Citizen files an illegal dumping complaint
+ * Citizen files an illegal dumping complaint with SLA and Eco-Rewards
  */
 async function createComplaint(req, res) {
   try {
-    const { title, description, latitude, longitude } = req.body;
+    const { title, description, latitude, longitude, category = 'General Waste', severity = 'Medium', address } = req.body;
 
     if (!title || !description || latitude == null || longitude == null) {
       return res.status(400).json({
@@ -43,25 +44,48 @@ async function createComplaint(req, res) {
       userId = defaultCitizen ? defaultCitizen.id : 1;
     }
 
+    // SLA Calculation: Critical = 2h, High = 6h, Medium/Low = 24h
+    const slaHours = severity === 'Critical' ? 2 : severity === 'High' ? 6 : 24;
+    const slaDeadline = new Date(Date.now() + slaHours * 3600 * 1000);
+
     const complaint = await prisma.complaint.create({
       data: {
         user_id: userId,
         title: title.trim(),
+        category,
+        severity,
+        address: address ? address.trim() : null,
         description: description.trim(),
         image_path: imagePath,
         latitude: lat,
         longitude: lng,
         status: 'Pending',
+        sla_deadline: slaDeadline,
       },
       include: { user: { select: { id: true, name: true, email: true } } },
     });
+
+    // Award citizen +20 Eco-Points
+    try {
+      await prisma.ecoReward.create({
+        data: {
+          user_id: userId,
+          points: 20,
+          reason: `Civic report submitted: #${complaint.id} (${category})`,
+          reference_type: 'complaint',
+          reference_id: complaint.id,
+        },
+      });
+    } catch (e) {
+      logger.error('Failed to log eco points', { error: e.message });
+    }
 
     // Notify citizen if authenticated
     if (req.user) {
       await createNotification(
         req.user.id,
-        'Report Submitted',
-        `Your illegal dumping complaint "${complaint.title}" has been registered (#${complaint.id}).`,
+        'Report Registered (+20 Eco-Points)',
+        `Your illegal dumping complaint "${complaint.title}" has been registered (#${complaint.id}). SLA Target: ${slaHours}h.`,
         'complaint'
       );
     }
@@ -71,17 +95,20 @@ async function createComplaint(req, res) {
     for (const adm of admins) {
       await createNotification(
         adm.id,
-        'New Dumping Report',
-        `Citizen ${req.user.name} reported illegal dumping: "${complaint.title}".`,
+        `New Dumping Report [${severity}]`,
+        `Citizen ${req.user?.name || 'Citizen'} reported: "${complaint.title}". SLA: ${slaHours}h response time.`,
         'complaint'
       );
     }
 
-    logger.info(`Citizen ${req.user.email} filed complaint #${complaint.id}`);
+    // Real-time WebSocket emission
+    emitEvent('complaint:created', complaint);
+
+    logger.info(`Citizen ${req.user?.email || 'User'} filed complaint #${complaint.id}`);
 
     return res.status(201).json({
       success: true,
-      message: 'Illegal dumping report filed successfully.',
+      message: 'Illegal dumping report filed successfully (+20 Eco-Points awarded).',
       complaint,
     });
   } catch (error) {
@@ -117,13 +144,14 @@ async function getMyComplaints(req, res) {
 }
 
 /**
- * Admin views all complaints
+ * Admin views all complaints with SLA monitoring
  */
 async function getAllComplaints(req, res) {
   try {
-    const { status } = req.query;
+    const { status, severity } = req.query;
     const where = {};
     if (status) where.status = status;
+    if (severity) where.severity = severity;
 
     const complaints = await prisma.complaint.findMany({
       where,
@@ -133,10 +161,22 @@ async function getAllComplaints(req, res) {
       },
     });
 
+    // Check SLA breaches
+    const now = new Date();
+    const enrichedComplaints = complaints.map((c) => {
+      const isBreached = c.status !== 'Resolved' && c.sla_deadline && new Date(c.sla_deadline) < now;
+      const remainingMs = c.sla_deadline ? new Date(c.sla_deadline) - now : null;
+      return {
+        ...c,
+        is_sla_breached: !!isBreached,
+        remaining_minutes: remainingMs != null ? Math.round(remainingMs / 60000) : null,
+      };
+    });
+
     return res.status(200).json({
       success: true,
-      count: complaints.length,
-      complaints,
+      count: enrichedComplaints.length,
+      complaints: enrichedComplaints,
     });
   } catch (error) {
     return res.status(500).json({
@@ -147,7 +187,7 @@ async function getAllComplaints(req, res) {
 }
 
 /**
- * Admin updates complaint status & adds notes
+ * Admin updates complaint status & adds notes with resolution reward
  */
 async function updateComplaintStatus(req, res) {
   try {
@@ -174,13 +214,33 @@ async function updateComplaintStatus(req, res) {
       },
     });
 
+    // If resolved, award citizen +50 Eco-Points
+    if (status === 'Resolved' && complaint.status !== 'Resolved') {
+      try {
+        await prisma.ecoReward.create({
+          data: {
+            user_id: complaint.user_id,
+            points: 50,
+            reason: `Complaint #${complaint.id} verified and resolved by municipality`,
+            reference_type: 'complaint_resolved',
+            reference_id: complaint.id,
+          },
+        });
+      } catch (e) {
+        // Ignored
+      }
+    }
+
     // Notify citizen of the resolution / status change
     await createNotification(
       complaint.user_id,
-      `Complaint #${complaint.id} Update`,
-      `Your report "${complaint.title}" status is now: ${status}.${admin_notes ? ` Note: ${admin_notes}` : ''}`,
+      `Complaint #${complaint.id} Update: ${status}`,
+      `Your report "${complaint.title}" status is now: ${status}.${status === 'Resolved' ? ' You received +50 Eco-Points!' : ''}${admin_notes ? ` Note: ${admin_notes}` : ''}`,
       'complaint'
     );
+
+    // Real-time WebSocket emission
+    emitEvent('complaint:updated', updated);
 
     return res.status(200).json({
       success: true,

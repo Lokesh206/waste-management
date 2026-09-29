@@ -42,6 +42,21 @@ async function classify(req, res) {
       },
     });
 
+    // Award citizen +10 Eco-Points
+    try {
+      await prisma.ecoReward.create({
+        data: {
+          user_id: userId,
+          points: 10,
+          reason: `AI Waste Scan: ${aiResult.predicted_class}`,
+          reference_type: 'classification',
+          reference_id: record.id,
+        },
+      });
+    } catch (e) {
+      // Ignored
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Waste image classified successfully.',

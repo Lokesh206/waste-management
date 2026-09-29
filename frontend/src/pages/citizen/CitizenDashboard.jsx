@@ -1,29 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { wasteAPI, complaintsAPI, binsAPI, getImageUrl } from '../../services/api';
+import { wasteAPI, complaintsAPI, binsAPI, rewardsAPI, getImageUrl } from '../../services/api';
 import MetricCard from '../../components/MetricCard';
 import StatusBadge from '../../components/StatusBadge';
-import { Camera, AlertTriangle, MapPin, CheckCircle2, Clock, ArrowRight, Sparkles, Award, Footprints } from 'lucide-react';
+import {
+  Camera,
+  AlertTriangle,
+  MapPin,
+  CheckCircle2,
+  Clock,
+  ArrowRight,
+  Sparkles,
+  Award,
+  Footprints,
+  Trophy,
+  Shield,
+  Medal,
+  TrendingUp,
+} from 'lucide-react';
 
 export default function CitizenDashboard() {
   const { user } = useAuth();
   const [classifications, setClassifications] = useState([]);
   const [complaints, setComplaints] = useState([]);
   const [binsCount, setBinsCount] = useState(0);
+  const [rewardsData, setRewardsData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [cRes, cmpRes, bRes] = await Promise.all([
+        const [cRes, cmpRes, bRes, rRes] = await Promise.all([
           wasteAPI.getHistory(),
           complaintsAPI.getMy(),
           binsAPI.getAll(),
+          rewardsAPI.getCitizenRewards().catch(() => ({ data: null })),
         ]);
-        if (cRes.data.success) setClassifications(cRes.data.history || []);
-        if (cmpRes.data.success) setComplaints(cmpRes.data.complaints || []);
-        if (bRes.data.success) setBinsCount(bRes.data.count || 0);
+        if (cRes.data?.success) setClassifications(cRes.data.history || []);
+        if (cmpRes.data?.success) setComplaints(cmpRes.data.complaints || []);
+        if (bRes.data?.success) setBinsCount(bRes.data.count || 0);
+        if (rRes.data?.success) setRewardsData(rRes.data);
       } catch (err) {
         console.error('Error loading citizen data', err);
       } finally {
@@ -34,6 +51,7 @@ export default function CitizenDashboard() {
   }, []);
 
   const resolvedComplaints = complaints.filter((c) => c.status === 'Resolved').length;
+  const userPoints = rewardsData?.totalPoints ?? (classifications.length * 15 + resolvedComplaints * 50 + complaints.length * 20);
 
   return (
     <div className="space-y-8">
@@ -45,13 +63,13 @@ export default function CitizenDashboard() {
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Welcome, {user?.name}!</h1>
           <p className="text-xs sm:text-sm text-emerald-100 leading-relaxed">
-            Scan waste using AI to sort responsibly, report illegal neighborhood dumping, and locate nearby smart bins.
+            Scan waste using AI to sort responsibly, report illegal neighborhood dumping, and locate nearby smart bins with live walking directions.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2.5">
           <Link
-            to="/citizen/bins"
+            to="/citizen/nearby-bins"
             className="px-4 py-2.5 rounded-xl font-bold text-xs bg-white text-emerald-900 hover:bg-emerald-50 shadow-sm transition flex items-center gap-2"
           >
             <MapPin className="w-4 h-4 text-emerald-600" />
@@ -78,22 +96,22 @@ export default function CitizenDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
         <MetricCard
           title="Eco-Reward Points"
-          value={(classifications.length * 15) + (resolvedComplaints * 50) + (complaints.length * 20)}
-          subtitle="Green citizen credits"
+          value={userPoints}
+          subtitle={rewardsData?.level || 'Level 1: Eco Scout'}
           icon={Sparkles}
           color="emerald"
         />
         <MetricCard
           title="Scanned Items"
           value={classifications.length}
-          subtitle="AI waste scans"
+          subtitle="AI waste scans (+10 pts each)"
           icon={Camera}
           color="purple"
         />
         <MetricCard
           title="Dumping Reports"
           value={complaints.length}
-          subtitle="Total reports filed"
+          subtitle="Filed (+50 pts on verify)"
           icon={AlertTriangle}
           color="rose"
         />
@@ -113,10 +131,124 @@ export default function CitizenDashboard() {
         />
       </div>
 
+      {/* Eco-Rewards & Citizen Leaderboard Row */}
+      {rewardsData && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Level Progress & Badges */}
+          <div className="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-500" />
+                <h2 className="text-base font-bold text-slate-900">Your Eco-Reward Tier & Progress</h2>
+              </div>
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                {rewardsData.level}
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-slate-600">Points to next milestone:</span>
+                <span className="text-emerald-700">{rewardsData.totalPoints} / {rewardsData.nextThreshold} pts</span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-emerald-500 to-teal-600 h-3 rounded-full transition-all duration-500"
+                  style={{ width: `${rewardsData.progressPercent}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Earn +10 pts for each AI waste scan and +50 pts for verified dumping incident cleanups.
+              </p>
+            </div>
+
+            {/* Badges Grid */}
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-slate-700">Earned Badges:</span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {rewardsData.badges?.map((b) => (
+                  <div
+                    key={b.id}
+                    className={`p-3 rounded-2xl border text-center transition ${
+                      b.unlocked
+                        ? 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
+                        : 'bg-slate-50 border-slate-200 text-slate-400 opacity-60'
+                    }`}
+                  >
+                    <span className="text-2xl block mb-1">{b.icon}</span>
+                    <p className="font-extrabold text-xs">{b.name}</p>
+                    <p className="text-[10px] mt-0.5 leading-tight">{b.desc}</p>
+                    <span className="text-[9px] font-bold mt-1 inline-block uppercase tracking-wider">
+                      {b.unlocked ? '✓ Unlocked' : 'Locked'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Top 5 Citizen Leaderboard */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                <div className="flex items-center gap-2">
+                  <Medal className="w-5 h-5 text-indigo-600" />
+                  <h2 className="text-base font-bold text-slate-900">City Green Leaderboard</h2>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700">
+                  Monthly
+                </span>
+              </div>
+
+              <div className="space-y-2.5">
+                {rewardsData.leaderboard?.map((citizen, idx) => (
+                  <div
+                    key={citizen.id}
+                    className={`p-3 rounded-2xl border flex items-center justify-between transition ${
+                      citizen.isCurrentUser
+                        ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-200'
+                        : 'bg-slate-50 border-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs ${
+                        idx === 0 ? 'bg-amber-400 text-slate-950' : idx === 1 ? 'bg-slate-300 text-slate-950' : idx === 2 ? 'bg-amber-700 text-white' : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <p className="font-bold text-xs text-slate-900">
+                          {citizen.name} {citizen.isCurrentUser && '(You)'}
+                        </p>
+                        <p className="text-[10px] text-slate-400">Verified Citizen</p>
+                      </div>
+                    </div>
+                    <span className="font-black text-xs text-emerald-700 font-mono">
+                      {citizen.points} pts
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 text-center">
+              <Link
+                to="/citizen/classify"
+                className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center justify-center gap-1"
+              >
+                <span>Scan Waste to Climb Ranks</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Recent Activity Sections */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent AI Scans */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
             <div>
               <h2 className="text-base font-bold text-slate-900">Recent AI Classifications</h2>
@@ -135,9 +267,9 @@ export default function CitizenDashboard() {
           ) : (
             <div className="space-y-3">
               {classifications.slice(0, 4).map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div key={item.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-200 shrink-0">
+                    <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-200 shrink-0">
                       <img
                         src={getImageUrl(item.image_path)}
                         alt={item.predicted_class}
@@ -168,7 +300,7 @@ export default function CitizenDashboard() {
         </div>
 
         {/* Recent Dumping Reports */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
             <div>
               <h2 className="text-base font-bold text-slate-900">Your Dumping Reports</h2>
@@ -187,7 +319,7 @@ export default function CitizenDashboard() {
           ) : (
             <div className="space-y-3">
               {complaints.slice(0, 4).map((c) => (
-                <div key={c.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                <div key={c.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-slate-900 line-clamp-1">{c.title}</p>
                     <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
@@ -205,4 +337,3 @@ export default function CitizenDashboard() {
     </div>
   );
 }
-

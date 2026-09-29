@@ -25,4 +25,6 @@ function roleMiddleware(allowedRoles) {
 }
 
 module.exports = roleMiddleware;
+module.exports.roleMiddleware = roleMiddleware;
+module.exports.requireRole = roleMiddleware;
 

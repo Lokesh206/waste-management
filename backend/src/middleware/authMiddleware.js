@@ -89,5 +89,6 @@ async function optionalAuthMiddleware(req, res, next) {
 
 module.exports = authMiddleware;
 module.exports.authMiddleware = authMiddleware;
+module.exports.authenticateToken = authMiddleware;
 module.exports.optionalAuthMiddleware = optionalAuthMiddleware;
 

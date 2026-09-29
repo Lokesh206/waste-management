@@ -75,18 +75,40 @@ async function processThresholdAlert(bin, fillPercentage) {
     return existingActive; // Avoid duplicate collection request
   }
 
+  // 4. Find available active collector with lowest task workload
+  const collectors = await prisma.user.findMany({
+    where: { role: 'collector', is_active: true },
+    include: {
+      assignedCollections: {
+        where: { status: { in: ['Assigned', 'Accepted', 'On the Way'] } },
+      },
+    },
+  });
+
+  let assignedCollectorId = null;
+  let status = 'Pending';
+
+  if (collectors.length > 0) {
+    // Pick collector with fewest active tasks
+    collectors.sort((a, b) => a.assignedCollections.length - b.assignedCollections.length);
+    assignedCollectorId = collectors[0].id;
+    status = 'Assigned';
+  }
+
   // Create new automated collection request
   const newRequest = await prisma.collectionRequest.create({
     data: {
       bin_id: bin.id,
       priority,
-      status: 'Pending',
-      notes: `Automated alert: Fill level reached ${fillPercentage}% (${bin.status}).`,
+      status,
+      assigned_collector_id: assignedCollectorId,
+      assigned_at: assignedCollectorId ? new Date() : null,
+      notes: `Automated alert: Fill level reached ${fillPercentage}% (${bin.status}). Automatically dispatched.`,
     },
-    include: { bin: true },
+    include: { bin: true, assignedCollector: true },
   });
 
-  logger.info(`Automated collection request generated for Bin ${bin.bin_code} (Priority: ${priority})`);
+  logger.info(`Automated collection request #${newRequest.id} generated for Bin ${bin.bin_code} (Assigned to: ${newRequest.assignedCollector?.name || 'Unassigned Queue'})`);
 
   // Dispatch in-app notification to all Admins
   const admins = await prisma.user.findMany({
@@ -97,9 +119,19 @@ async function processThresholdAlert(bin, fillPercentage) {
   for (const adm of admins) {
     await notificationService.createNotification(
       adm.id,
-      `Smart Bin Alert: ${bin.bin_code}`,
-      `Bin ${bin.bin_code} at ${bin.location_name} reached ${fillPercentage}% (${priority}). Immediate collection recommended.`,
+      `🚨 Critical Bin Alert: ${bin.bin_code}`,
+      `Bin ${bin.bin_code} at ${bin.location_name} reached ${fillPercentage}%. Automated dispatch initiated.`,
       'alert'
+    );
+  }
+
+  // Notify assigned collector if assigned
+  if (assignedCollectorId) {
+    await notificationService.createNotification(
+      assignedCollectorId,
+      `🚨 Urgent Collection Dispatched: ${bin.bin_code}`,
+      `Critical overflow at ${bin.location_name} (${fillPercentage}%). Added to your route priority queue.`,
+      'task'
     );
   }
 

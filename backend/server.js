@@ -83,9 +83,16 @@ app.use((err, req, res, next) => {
   });
 });
 
+const http = require('http');
+const { initSocket } = require('./src/websocket/socketManager');
+
+const server = http.createServer(app);
+initSocket(server);
+
 if (process.env.NODE_ENV !== 'test') {
-  const server = app.listen(PORT, () => {
-    logger.info(`🚀 SWMS Backend Server is running on port ${PORT}`);
+  server.listen(PORT, () => {
+    logger.info(`🚀 SWMS Real-Time Platform Server running on port ${PORT}`);
+    logger.info(`   WebSocket (Socket.IO): Active on port ${PORT}`);
     logger.info(`   API Root: http://localhost:${PORT}/api`);
     logger.info(`   Uploads: http://localhost:${PORT}/uploads`);
   });

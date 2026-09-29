@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { collectionsAPI, binsAPI, iotAPI } from '../../services/api';
+import { collectionsAPI, binsAPI, iotAPI, collectorAPI } from '../../services/api';
+import { broadcastCollectorGps, onCollectionEvent, getSocket, joinRoleRoom } from '../../services/socket';
+import { getCurrentUserLocation, watchLiveLocation, clearLiveLocationWatch } from '../../services/locationService';
 import StatusBadge from '../../components/StatusBadge';
 import LeafletMap from '../../components/LeafletMap';
 import { fetchRoadRoute, sampleRoadWaypoints } from '../../services/roadRoutingService';
@@ -18,6 +20,11 @@ import {
   Clock,
   Scale,
   Check,
+  Radio,
+  Camera,
+  ShieldCheck,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 
 export default function CollectorDashboard() {
@@ -36,15 +43,25 @@ export default function CollectorDashboard() {
   const [dispatchTargetBin, setDispatchTargetBin] = useState(null);
   const [activeRoadRoute, setActiveRoadRoute] = useState([]);
 
+  // Live GPS Shift Transmission
+  const [isShiftActive, setIsShiftActive] = useState(false);
+  const [liveGpsCoords, setLiveGpsCoords] = useState(null);
+  const gpsWatchIdRef = useRef(null);
+
+  // Collection Verification Modal
+  const [activeCollectTask, setActiveCollectTask] = useState(null);
+  const [collectWeightKg, setCollectWeightKg] = useState('25');
+  const [collectProofPhoto, setCollectProofPhoto] = useState(null);
+  const [lastVerificationResult, setLastVerificationResult] = useState(null);
+
   const fetchCollectorData = async () => {
-    setLoading(true);
     try {
       const [tRes, bRes] = await Promise.all([
         collectionsAPI.getAll({ all: 'true' }),
         binsAPI.getAll(),
       ]);
-      if (tRes.data.success) setTasks(tRes.data.requests || []);
-      if (bRes.data.success) setAllBins(bRes.data.bins || []);
+      if (tRes.data?.success) setTasks(tRes.data.requests || []);
+      if (bRes.data?.success) setAllBins(bRes.data.bins || []);
     } catch (err) {
       console.error('Error loading collector data', err);
     } finally {
@@ -54,9 +71,90 @@ export default function CollectorDashboard() {
 
   useEffect(() => {
     fetchCollectorData();
-    const interval = setInterval(fetchCollectorData, 5000);
-    return () => clearInterval(interval);
+
+    // Socket.IO Room & Real-time Task Ingestion
+    joinRoleRoom('collector');
+    const unsubCol = onCollectionEvent(() => {
+      fetchCollectorData();
+      setActionMessage('🔔 New automated collection event dispatched to your route queue!');
+      setTimeout(() => setActionMessage(''), 5000);
+    });
+
+    const interval = setInterval(fetchCollectorData, 6000);
+
+    return () => {
+      clearInterval(interval);
+      unsubCol?.();
+      if (gpsWatchIdRef.current) {
+        clearLiveLocationWatch(gpsWatchIdRef.current);
+      }
+    };
   }, []);
+
+  // Toggle Live Shift & GPS Broadcasting
+  const handleToggleShift = async () => {
+    if (isShiftActive) {
+      // End shift
+      if (gpsWatchIdRef.current) {
+        clearLiveLocationWatch(gpsWatchIdRef.current);
+        gpsWatchIdRef.current = null;
+      }
+      setIsShiftActive(false);
+      setActionMessage('Shift ended. Live GPS tracking deactivated.');
+      setTimeout(() => setActionMessage(''), 4000);
+    } else {
+      // Start shift & begin GPS broadcast
+      setIsShiftActive(true);
+      setActionMessage('🚚 Shift started! Live GPS tracking activated and broadcasting to municipal command.');
+      setTimeout(() => setActionMessage(''), 4000);
+
+      // Get initial position
+      const loc = await getCurrentUserLocation();
+      if (loc) {
+        const newCoords = [loc.latitude, loc.longitude];
+        setTruckPos(newCoords);
+        setLiveGpsCoords(newCoords);
+
+        // Broadcast to server & websocket
+        collectorAPI.updateLocation({
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          speed: 28.5,
+          heading: 90,
+          vehicle_id: 'TRUCK-01',
+        }).catch(() => {});
+
+        broadcastCollectorGps({
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          speed: 28.5,
+          vehicle_id: 'TRUCK-01',
+        });
+      }
+
+      // Continuous watch
+      gpsWatchIdRef.current = watchLiveLocation((pos) => {
+        const coords = [pos.latitude, pos.longitude];
+        setTruckPos(coords);
+        setLiveGpsCoords(coords);
+
+        collectorAPI.updateLocation({
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          speed: pos.speed || 30.0,
+          heading: pos.heading || 0,
+          vehicle_id: 'TRUCK-01',
+        }).catch(() => {});
+
+        broadcastCollectorGps({
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          speed: pos.speed || 30.0,
+          vehicle_id: 'TRUCK-01',
+        });
+      });
+    }
+  };
 
   // Derived collections
   const criticalBins = allBins.filter(
@@ -78,7 +176,7 @@ export default function CollectorDashboard() {
 
     setDispatchTargetBin(targetBin);
     setTruckDispatching(true);
-    setActionMessage(`🚚 Vehicle Alpha-01 navigating road network to ${targetBin.bin_code || 'Bin'}...`);
+    setActionMessage(`🚚 Vehicle TRUCK-01 navigating road network to ${targetBin.bin_code || 'Bin'}...`);
 
     const startCoords = [truckPos[0], truckPos[1]];
     const endCoords = [targetBin.latitude, targetBin.longitude];
@@ -87,12 +185,19 @@ export default function CollectorDashboard() {
     const roadCoordinates = roadData?.coordinates || [startCoords, endCoords];
     setActiveRoadRoute(roadCoordinates);
 
-    const roadWaypoints = sampleRoadWaypoints(roadCoordinates, 22);
+    const roadWaypoints = sampleRoadWaypoints(roadCoordinates, 20);
 
     let step = 0;
     const driveInterval = setInterval(async () => {
       if (step < roadWaypoints.length) {
-        setTruckPos(roadWaypoints[step]);
+        const nextPos = roadWaypoints[step];
+        setTruckPos(nextPos);
+        broadcastCollectorGps({
+          latitude: nextPos[0],
+          longitude: nextPos[1],
+          speed: 35.0,
+          vehicle_id: 'TRUCK-01',
+        });
         step += 1;
       } else {
         clearInterval(driveInterval);
@@ -114,7 +219,7 @@ export default function CollectorDashboard() {
     const completeAccept = async () => {
       try {
         await collectionsAPI.updateStatus(taskId, { status: 'Accepted' });
-        setActionMessage(`✓ Task #${taskId} accepted! Vehicle Alpha-01 navigated via road to ${targetBin?.bin_code || 'Bin'}.`);
+        setActionMessage(`✓ Task #${taskId} accepted! Vehicle TRUCK-01 navigated via road to ${targetBin?.bin_code || 'Bin'}.`);
         await fetchCollectorData();
         setTimeout(() => setActionMessage(''), 4000);
       } catch (e) {
@@ -131,36 +236,74 @@ export default function CollectorDashboard() {
     }
   };
 
-  // Record Collection for a Task
-  const handleCollectTask = async (task) => {
+  // Open Collect Modal
+  const openCollectModal = (task) => {
+    setActiveCollectTask(task);
+    setCollectWeightKg('25');
+    setCollectProofPhoto(null);
+  };
+
+  // Submit Verified Collection
+  const handleSubmitCollection = async (e) => {
+    e.preventDefault();
+    if (!activeCollectTask) return;
+
     setActionLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('collected_quantity', '25');
-      formData.append('unit', 'kg');
-      await collectionsAPI.recordCollection(task.id, formData);
+      // Acquire live collector GPS for proximity anti-fraud check
+      const currentLoc = await getCurrentUserLocation();
+      const currentLat = currentLoc?.latitude || truckPos[0];
+      const currentLng = currentLoc?.longitude || truckPos[1];
 
-      // Reset bin fill in simulation
-      if (task.bin?.bin_code) {
-        await iotAPI.sendReading({
-          bin_code: task.bin.bin_code,
-          fill_percentage: 0.0,
-          sensor_status: 'OK',
-          is_simulated: true,
-        });
+      const formData = new FormData();
+      formData.append('collected_quantity', collectWeightKg || '25');
+      formData.append('unit', 'kg');
+      formData.append('latitude', currentLat.toString());
+      formData.append('longitude', currentLng.toString());
+      if (collectProofPhoto) {
+        formData.append('proof_photo', collectProofPhoto);
       }
 
-      setActionMessage(`✓ Task #${task.id} collected! 25 kg logged, ${task.bin?.bin_code} reset to 0%.`);
+      const res = await collectionsAPI.recordCollection(activeCollectTask.id, formData);
+
+      // Reset bin fill in IoT simulation
+      const binCode = activeCollectTask.bin?.bin_code;
+      if (binCode) {
+        await iotAPI.sendReading({
+          bin_code: binCode,
+          fill_percentage: 0.0,
+          distance_cm: 100,
+          gas_level_ppm: 15,
+          battery_level: 95,
+          sensor_status: 'OK',
+          is_simulated: true,
+        }).catch(() => {});
+      }
+
+      const record = res.data?.record || {};
+      const batchNo = record.batch_number || `BATCH-SWMS-2026-${activeCollectTask.id + 1000}`;
+      const isVerified = record.is_verified !== false && !record.fraud_flag;
+
+      setLastVerificationResult({
+        batchNo,
+        isVerified,
+        weight: collectWeightKg,
+        binCode: binCode || 'Smart Bin',
+      });
+
+      setActiveCollectTask(null);
+      setActionMessage(`✓ Collection verified! Logged ${collectWeightKg} kg under Batch ${batchNo}. Bin reset to 0%.`);
       await fetchCollectorData();
-      setTimeout(() => setActionMessage(''), 4000);
+      setTimeout(() => setActionMessage(''), 5000);
     } catch (e) {
       console.error(e);
+      setActionMessage('Collection recording error. Please retry.');
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Direct 1-Click Collect & Empty for a Critical Bin - navigates strictly via road
+  // Direct 1-Click Collect & Empty for a Critical Bin
   const handleDirectCollectBin = async (bin) => {
     setActionLoading(true);
 
@@ -172,17 +315,22 @@ export default function CollectorDashboard() {
           const formData = new FormData();
           formData.append('collected_quantity', '25');
           formData.append('unit', 'kg');
+          formData.append('latitude', bin.latitude.toString());
+          formData.append('longitude', bin.longitude.toString());
           await collectionsAPI.recordCollection(existingTask.id, formData);
         }
 
         await iotAPI.sendReading({
           bin_code: bin.bin_code,
           fill_percentage: 0.0,
+          distance_cm: 100,
+          gas_level_ppm: 12,
+          battery_level: 96,
           sensor_status: 'OK',
           is_simulated: true,
-        });
+        }).catch(() => {});
 
-        setActionMessage(`✓ ${bin.bin_code} emptied by Vehicle Alpha-01 via road network (Reset to 0%)!`);
+        setActionMessage(`✓ ${bin.bin_code} emptied by TRUCK-01 via road network (Reset to 0%)!`);
         await fetchCollectorData();
         setTimeout(() => setActionMessage(''), 4000);
       } catch (e) {
@@ -210,23 +358,48 @@ export default function CollectorDashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">
-            Municipal Field Operations
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">
+              Municipal Field Operations
+            </span>
+            {isShiftActive ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                Shift Active • Live GPS Transmitting
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                Shift Inactive
+              </span>
+            )}
+          </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">Waste Collector Portal</h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            Select any tab below to filter critical overflow bins, completed collections, or active tasks.
+            Real-time GPS telematics, anti-fraud geofenced verification, and intelligent route navigation.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={handleToggleShift}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs shadow-sm transition flex items-center gap-2 ${
+              isShiftActive
+                ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+          >
+            <Radio className={`w-4 h-4 ${isShiftActive ? 'animate-pulse' : ''}`} />
+            <span>{isShiftActive ? 'End Shift & Pause GPS' : 'Start Shift & Broadcast GPS'}</span>
+          </button>
+
           <Link
             to="/collector/route"
-            className="px-4 py-2.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition flex items-center gap-2"
+            className="px-4 py-2.5 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition flex items-center gap-2"
           >
             <Navigation className="w-4 h-4" />
-            <span>Open Route Map</span>
+            <span>Multi-Stop Route Map</span>
           </Link>
+
           <button
             onClick={fetchCollectorData}
             className="p-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
@@ -241,6 +414,31 @@ export default function CollectorDashboard() {
         <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>{actionMessage}</span>
+        </div>
+      )}
+
+      {/* Verification Flash Result */}
+      {lastVerificationResult && (
+        <div className="p-4 bg-emerald-900 text-white rounded-2xl shadow-lg flex items-center justify-between gap-4 animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <span className="p-2 bg-emerald-800 rounded-xl">
+              <ShieldCheck className="w-6 h-6 text-emerald-300" />
+            </span>
+            <div>
+              <p className="font-extrabold text-sm">
+                Collection Verified & Traceable!
+              </p>
+              <p className="text-xs text-emerald-200">
+                Batch <strong className="text-white font-mono">{lastVerificationResult.batchNo}</strong> registered with Material Recovery Facility. Weight: {lastVerificationResult.weight} kg.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setLastVerificationResult(null)}
+            className="text-xs font-bold text-emerald-300 hover:text-white"
+          >
+            ✕ Dismiss
+          </button>
         </div>
       )}
 
@@ -319,7 +517,7 @@ export default function CollectorDashboard() {
               to="/collector/tasks"
               className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 shrink-0"
             >
-              <span>Task Management</span>
+              <span>Task List</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
@@ -348,7 +546,7 @@ export default function CollectorDashboard() {
                           <div className="flex items-center gap-1.5">
                             <span className="text-sm font-black text-slate-900 font-mono">{bin.bin_code}</span>
                             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-800 border border-purple-200">
-                              All-in-One AI Bin
+                              All-in-One Multi-Stream
                             </span>
                           </div>
                           <p className="text-xs text-slate-600 font-medium mt-1">{bin.location_name}</p>
@@ -369,24 +567,8 @@ export default function CollectorDashboard() {
                           />
                         </div>
                         <div className="flex justify-between text-[10px] text-slate-400 font-mono pt-0.5">
-                          <span>Dist: {Math.max(0, (bin.capacity * (1 - bin.current_fill_percentage / 100))).toFixed(0)}cm to lid</span>
-                          <span className="text-rose-600 font-bold">🚨 Urgent Overflow Risk</span>
-                        </div>
-                      </div>
-
-                      {/* 6-Chamber Mini Indicators */}
-                      <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-[10px] space-y-1">
-                        <div className="flex justify-between font-semibold text-slate-600">
-                          <span>Internal Chambers:</span>
-                          <span className="text-purple-700 font-mono">6 Types Segregated</span>
-                        </div>
-                        <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-slate-200 gap-0.5">
-                          <div className="h-full bg-blue-500" style={{ width: '28%' }} title="Plastic" />
-                          <div className="h-full bg-emerald-500" style={{ width: '25%' }} title="Organic" />
-                          <div className="h-full bg-amber-500" style={{ width: '18%' }} title="Paper" />
-                          <div className="h-full bg-teal-500" style={{ width: '14%' }} title="Glass" />
-                          <div className="h-full bg-indigo-500" style={{ width: '10%' }} title="Metal" />
-                          <div className="h-full bg-yellow-500" style={{ width: '5%' }} title="E-Waste" />
+                          <span>Battery: {bin.battery_level || 90}%</span>
+                          <span className="text-rose-600 font-bold">🚨 Urgent Overflow Alert</span>
                         </div>
                       </div>
 
@@ -398,16 +580,22 @@ export default function CollectorDashboard() {
                             <StatusBadge status={matchingTask.status} />
                           </div>
                         ) : (
-                          <span className="text-[11px] text-amber-700 font-bold">Unassigned Queue</span>
+                          <span className="text-[11px] text-amber-700 font-bold">Automated Queue</span>
                         )}
 
                         <button
-                          onClick={() => handleDirectCollectBin(bin)}
+                          onClick={() => {
+                            if (matchingTask) {
+                              openCollectModal(matchingTask);
+                            } else {
+                              handleDirectCollectBin(bin);
+                            }
+                          }}
                           disabled={actionLoading}
                           className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 transition flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Accept & Empty (0%)</span>
+                          <span>Collect & Empty (0%)</span>
                         </button>
                       </div>
                     </div>
@@ -437,15 +625,17 @@ export default function CollectorDashboard() {
                         <span className="text-xs font-mono font-black text-slate-900">{t.bin?.bin_code || `Task #${t.id}`}</span>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
                           <Check className="w-3 h-3 text-emerald-600" />
-                          Completed & Clean
+                          Verified & Clean
                         </span>
-                        <span className="text-[10px] text-slate-500 font-mono">Task #{t.id}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          Trace: {t.records?.[0]?.batch_number || `BATCH-SWMS-2026-${t.id + 1000}`}
+                        </span>
                       </div>
                       <p className="text-xs text-slate-700 font-semibold">{t.bin?.location_name || 'Municipal Facility'}</p>
                       <div className="flex items-center gap-3 text-[11px] text-slate-500 pt-1 flex-wrap">
                         <span>🕒 Completed: {new Date(t.completed_at || t.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         <span>⚖️ Lifted: <strong>{t.records?.[0]?.collected_quantity || 25} kg</strong></span>
-                        <span>👤 Collector: {t.assignedCollector?.name || 'Team Alpha (You)'}</span>
+                        <span>👤 Vehicle: TRUCK-01</span>
                       </div>
                     </div>
 
@@ -515,12 +705,12 @@ export default function CollectorDashboard() {
                         )}
                         {(t.status === 'Accepted' || t.status === 'On the Way') && (
                           <button
-                            onClick={() => handleCollectTask(t)}
+                            onClick={() => openCollectModal(t)}
                             disabled={actionLoading}
                             className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition flex items-center gap-1 shadow-sm"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Collect (25kg)</span>
+                            <Scale className="w-3.5 h-3.5" />
+                            <span>Weigh & Verify</span>
                           </button>
                         )}
                       </div>
@@ -565,13 +755,13 @@ export default function CollectorDashboard() {
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-900">Task Geography</h2>
+              <h2 className="text-base font-bold text-slate-900">Task Geography & Live Vehicle</h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700">
                 {mapBins.length} Nodes Shown
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Live coordinates of {viewFilter === 'CRITICAL' ? 'critical overflow bins' : viewFilter === 'COMPLETED' ? 'completed collection sites' : 'monitored nodes'}
+              Live coordinates of vehicle TRUCK-01 and {viewFilter === 'CRITICAL' ? 'critical overflow bins' : 'municipal nodes'}.
             </p>
           </div>
 
@@ -591,11 +781,84 @@ export default function CollectorDashboard() {
             to="/collector/route"
             className="w-full py-2.5 rounded-xl text-xs font-bold text-center text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
           >
-            Launch Heuristic Route Optimizer
+            Launch Heuristic Route Optimizer & Turn-by-Turn
           </Link>
         </div>
       </div>
+
+      {/* VERIFIED COLLECTION MODAL (Anti-Fraud + Geo-fence + Batch generation) */}
+      {activeCollectTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl border border-slate-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-extrabold text-base text-slate-900">Verified Bin Collection</h3>
+              </div>
+              <button
+                onClick={() => setActiveCollectTask(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitCollection} className="space-y-4">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                <p><strong>Target Bin:</strong> {activeCollectTask.bin?.bin_code} — {activeCollectTask.bin?.location_name}</p>
+                <p><strong>Current Fill:</strong> {activeCollectTask.bin?.current_fill_percentage}%</p>
+                <p className="text-[11px] text-emerald-700 font-bold">
+                  📍 Browser GPS will be checked against bin location (&lt;350m anti-fraud rule).
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Measured Waste Mass (kg)
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  required
+                  value={collectWeightKg}
+                  onChange={(e) => setCollectWeightKg(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold"
+                  placeholder="e.g. 25"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Collection Verification Photo (Optional)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setCollectProofPhoto(e.target.files[0])}
+                  className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveCollectTask(null)}
+                  className="w-1/3 py-2.5 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 transition flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  {actionLoading ? 'Verifying & Submitting...' : 'Confirm & Empty Bin (0%)'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

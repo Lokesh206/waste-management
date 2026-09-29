@@ -10,6 +10,9 @@ const wasteRoutes = require('./wasteRoutes');
 const analyticsRoutes = require('./analyticsRoutes');
 const notificationRoutes = require('./notificationRoutes');
 const reportRoutes = require('./reportRoutes');
+const collectorRoutes = require('./collectorRoutes');
+const ecoRewardRoutes = require('./ecoRewardRoutes');
+const adminRoutes = require('./adminRoutes');
 
 const router = express.Router();
 
@@ -23,6 +26,9 @@ router.use('/waste', wasteRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/reports', reportRoutes);
+router.use('/collector', collectorRoutes);
+router.use('/citizen', ecoRewardRoutes);
+router.use('/admin', adminRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

@@ -25,6 +25,8 @@ model User {
   collectionRecords    CollectionRecord[]
   recyclingRecords     RecyclingRecord[]
   notifications        Notification[]
+  ecoRewards           EcoReward[]
+  assignedVehicles     Vehicle[]
 
   @@map("users")
 }
@@ -37,8 +39,13 @@ model Bin {
   longitude               Float
   capacity                Float    @default(100.0) // Height in cm or liters
   current_fill_percentage Float    @default(0.0)
-  waste_type              String   @default("General") // General, Organic, Plastic, Paper, Glass, Metal, E-Waste, Hazardous
+  waste_type              String   @default("All-in-One Multi-Stream AI")
   status                  String   @default("Normal") // Normal, Moderate, Almost Full, Critical, Offline
+  ward                    String?  @default("Ward 101")
+  battery_level           Float?   @default(95.0)
+  gas_level_ppm           Float?   @default(20.0)
+  cleanliness_score       Float?   @default(95.0)
+  last_collected_at       DateTime?
   is_active               Boolean  @default(true)
   created_at              DateTime @default(now())
   updated_at              DateTime @updatedAt
@@ -47,6 +54,8 @@ model Bin {
   readings           BinReading[]
   collectionRequests CollectionRequest[]
   predictions        PredictionRecord[]
+  anomalies          Anomaly[]
+  maintenanceTickets MaintenanceTicket[]
 
   @@map("bins")
 }
@@ -57,6 +66,8 @@ model BinReading {
   fill_percentage Float
   distance_cm     Float?
   temperature     Float?
+  gas_level_ppm   Float?   @default(20.0)
+  battery_level   Float?   @default(95.0)
   sensor_status   String   @default("OK")
   recorded_at     DateTime @default(now())
 
@@ -74,6 +85,7 @@ model WasteClassification {
   confidence      Float
   recyclable      Boolean
   model_version   String   @default("v1.0-mobilenetv2")
+  is_simulated    Boolean  @default(false)
   created_at      DateTime @default(now())
 
   // Relations
@@ -111,8 +123,11 @@ model CollectionRecord {
   collected_quantity    Float
   unit                  String   @default("kg")
   proof_image           String?
+  before_image          String?
   collection_latitude   Float?
   collection_longitude  Float?
+  is_verified           Boolean  @default(true)
+  fraud_flag            String?  // null if verified, or audit reason
   collected_at          DateTime @default(now())
 
   // Relations
@@ -124,17 +139,23 @@ model CollectionRecord {
 }
 
 model Complaint {
-  id          Int      @id @default(autoincrement())
-  user_id     Int
-  title       String
-  description String
-  image_path  String?
-  latitude    Float
-  longitude   Float
-  status      String   @default("Pending") // Pending, Under Review, Assigned, Resolved, Rejected
-  admin_notes String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id                Int      @id @default(autoincrement())
+  user_id           Int
+  title             String
+  category          String   @default("General Waste")
+  severity          String   @default("Medium") // Low, Medium, Critical
+  description       String
+  image_path        String?
+  latitude          Float
+  longitude         Float
+  address           String?
+  status            String   @default("Pending") // Pending, Under Review, Assigned, Resolved, Rejected
+  admin_notes       String?
+  sla_deadline      DateTime?
+  is_sla_breached   Boolean  @default(false)
+  citizen_confirmed Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   // Relations
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -144,11 +165,13 @@ model Complaint {
 
 model RecyclingRecord {
   id                   Int       @id @default(autoincrement())
+  batch_number         String?   // BATCH-SWMS-2026-XXXXX
   collection_record_id Int
   recycling_center_id  Int
   waste_type           String
   quantity             Float
   unit                 String    @default("kg")
+  recovery_rate        Float?    @default(85.0) // % converted into reusable raw material
   status               String    @default("Pending") // Pending, Received, Processing, Recycled, Rejected
   processed_quantity   Float     @default(0.0)
   processed_at         DateTime?
@@ -191,3 +214,89 @@ model PredictionRecord {
   @@map("prediction_records")
 }
 
+model Vehicle {
+  id              Int      @id @default(autoincrement())
+  vehicle_code    String   @unique // TRUCK-07
+  plate_number    String
+  collector_id    Int?
+  capacity_kg     Float    @default(1500.0)
+  current_load_kg Float    @default(0.0)
+  status          String   @default("Available") // Available, On Route, Maintenance, Offline
+  latitude        Float    @default(12.9690)
+  longitude       Float    @default(77.5920)
+  speed           Float    @default(0.0)
+  heading         Float    @default(0.0)
+  updated_at      DateTime @updatedAt
+
+  assignedCollector User? @relation(fields: [collector_id], references: [id], onDelete: SetNull)
+
+  @@map("vehicles")
+}
+
+model EcoReward {
+  id             Int      @id @default(autoincrement())
+  user_id        Int
+  points         Int
+  reason         String
+  reference_type String?  // complaint, classification, deposit
+  reference_id   Int?
+  created_at     DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("eco_rewards")
+}
+
+model Anomaly {
+  id           Int      @id @default(autoincrement())
+  bin_id       Int
+  anomaly_type String   // Fill Spike, Sensor Drift, Battery Drain, Gas Surge
+  severity     String   @default("Medium") // Low, Medium, High, Critical
+  description  String
+  detected_at  DateTime @default(now())
+  is_resolved  Boolean  @default(false)
+
+  bin Bin @relation(fields: [bin_id], references: [id], onDelete: Cascade)
+
+  @@map("anomalies")
+}
+
+model MaintenanceTicket {
+  id          Int       @id @default(autoincrement())
+  bin_id      Int
+  issue_type  String    // Battery Degradation, Ultrasonic Sensor Offline, Physical Damage
+  priority    String    @default("Medium") // Low, Medium, High, Critical
+  status      String    @default("Pending") // Pending, In Progress, Resolved
+  description String
+  created_at  DateTime  @default(now())
+  resolved_at DateTime?
+
+  bin Bin @relation(fields: [bin_id], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_tickets")
+}
+
+model Ward {
+  id                     Int     @id @default(autoincrement())
+  ward_number            Int     @unique
+  name                   String
+  target_recycling_rate  Float   @default(70.0)
+  cleanliness_index      Float   @default(88.0)
+  total_waste_kg         Float   @default(0.0)
+  total_recycled_kg      Float   @default(0.0)
+
+  @@map("wards")
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  user_id     Int?
+  action      String   // LOGIN, COLLECTION_VERIFIED, FRAUD_FLAGGED, THRESHOLD_SPIKE
+  entity_type String   // Bin, Collection, Complaint, Vehicle
+  entity_id   Int?
+  details     String?
+  ip_address  String?
+  created_at  DateTime @default(now())
+
+  @@map("audit_logs")
+}
