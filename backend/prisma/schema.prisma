@@ -1,0 +1,193 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  name          String
+  email         String   @unique
+  phone         String?
+  password_hash String
+  role          String   // citizen, collector, recycling_center, admin
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+
+  // Relations
+  wasteClassifications WasteClassification[]
+  complaints           Complaint[]
+  requestedCollections CollectionRequest[]   @relation("Requester")
+  assignedCollections  CollectionRequest[]   @relation("AssignedCollector")
+  collectionRecords    CollectionRecord[]
+  recyclingRecords     RecyclingRecord[]
+  notifications        Notification[]
+
+  @@map("users")
+}
+
+model Bin {
+  id                      Int      @id @default(autoincrement())
+  bin_code                String   @unique
+  location_name           String
+  latitude                Float
+  longitude               Float
+  capacity                Float    @default(100.0) // Height in cm or liters
+  current_fill_percentage Float    @default(0.0)
+  waste_type              String   @default("General") // General, Organic, Plastic, Paper, Glass, Metal, E-Waste, Hazardous
+  status                  String   @default("Normal") // Normal, Moderate, Almost Full, Critical, Offline
+  is_active               Boolean  @default(true)
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+
+  // Relations
+  readings           BinReading[]
+  collectionRequests CollectionRequest[]
+  predictions        PredictionRecord[]
+
+  @@map("bins")
+}
+
+model BinReading {
+  id              Int      @id @default(autoincrement())
+  bin_id          Int
+  fill_percentage Float
+  distance_cm     Float?
+  temperature     Float?
+  sensor_status   String   @default("OK")
+  recorded_at     DateTime @default(now())
+
+  // Relations
+  bin Bin @relation(fields: [bin_id], references: [id], onDelete: Cascade)
+
+  @@map("bin_readings")
+}
+
+model WasteClassification {
+  id              Int      @id @default(autoincrement())
+  user_id         Int
+  image_path      String
+  predicted_class String   // Plastic, Paper, Glass, Metal, Organic, E-Waste, Hazardous, Other
+  confidence      Float
+  recyclable      Boolean
+  model_version   String   @default("v1.0-mobilenetv2")
+  created_at      DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("waste_classifications")
+}
+
+model CollectionRequest {
+  id                    Int       @id @default(autoincrement())
+  bin_id                Int
+  requested_by          Int?
+  assigned_collector_id Int?
+  priority              String    @default("Medium") // Low, Medium, High, Critical
+  status                String    @default("Pending") // Pending, Assigned, Accepted, On the Way, Collected, Completed, Cancelled
+  requested_at          DateTime  @default(now())
+  assigned_at           DateTime?
+  started_at            DateTime?
+  completed_at          DateTime?
+  notes                 String?
+
+  // Relations
+  bin               Bin                @relation(fields: [bin_id], references: [id], onDelete: Cascade)
+  requester         User?              @relation("Requester", fields: [requested_by], references: [id], onDelete: SetNull)
+  assignedCollector User?              @relation("AssignedCollector", fields: [assigned_collector_id], references: [id], onDelete: SetNull)
+  records           CollectionRecord[]
+
+  @@map("collection_requests")
+}
+
+model CollectionRecord {
+  id                    Int      @id @default(autoincrement())
+  collection_request_id Int
+  collector_id          Int
+  collected_quantity    Float
+  unit                  String   @default("kg")
+  proof_image           String?
+  collection_latitude   Float?
+  collection_longitude  Float?
+  collected_at          DateTime @default(now())
+
+  // Relations
+  collectionRequest CollectionRequest @relation(fields: [collection_request_id], references: [id], onDelete: Cascade)
+  collector         User              @relation(fields: [collector_id], references: [id], onDelete: Cascade)
+  recyclingRecords  RecyclingRecord[]
+
+  @@map("collection_records")
+}
+
+model Complaint {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  title       String
+  description String
+  image_path  String?
+  latitude    Float
+  longitude   Float
+  status      String   @default("Pending") // Pending, Under Review, Assigned, Resolved, Rejected
+  admin_notes String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("complaints")
+}
+
+model RecyclingRecord {
+  id                   Int       @id @default(autoincrement())
+  collection_record_id Int
+  recycling_center_id  Int
+  waste_type           String
+  quantity             Float
+  unit                 String    @default("kg")
+  status               String    @default("Pending") // Pending, Received, Processing, Recycled, Rejected
+  processed_quantity   Float     @default(0.0)
+  processed_at         DateTime?
+  created_at           DateTime  @default(now())
+
+  // Relations
+  collectionRecord CollectionRecord @relation(fields: [collection_record_id], references: [id], onDelete: Cascade)
+  recyclingCenter  User             @relation(fields: [recycling_center_id], references: [id], onDelete: Cascade)
+
+  @@map("recycling_records")
+}
+
+model Notification {
+  id                Int      @id @default(autoincrement())
+  user_id           Int
+  title             String
+  message           String
+  notification_type String   @default("system")
+  is_read           Boolean  @default(false)
+  created_at        DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model PredictionRecord {
+  id                          Int      @id @default(autoincrement())
+  bin_id                      Int
+  prediction_time             DateTime @default(now())
+  predicted_fill_percentage   Float
+  predicted_time_to_threshold Float?   // in hours until 90%
+  model_version               String   @default("v1.0-rf")
+  created_at                  DateTime @default(now())
+
+  // Relations
+  bin Bin @relation(fields: [bin_id], references: [id], onDelete: Cascade)
+
+  @@map("prediction_records")
+}
+

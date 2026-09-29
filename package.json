@@ -1,0 +1,21 @@
+{
+  "name": "smart-waste-management-system",
+  "version": "1.0.0",
+  "description": "Smart Waste Management System using AI, IoT, GPS and Predictive Analytics",
+  "scripts": {
+    "start": "node backend/server.js",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "db:seed": "cd backend && npm run db:seed",
+    "db:migrate": "cd backend && npm run db:migrate",
+    "test:backend": "cd backend && npm test"
+  },
+  "keywords": ["smart-waste", "iot", "ai", "gps", "react", "node", "express"],
+  "author": "SWMS Team",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
+
