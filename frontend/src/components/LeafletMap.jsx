@@ -1,33 +1,47 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Navigation, Locate, ZoomIn, ZoomOut, Maximize2, Compass, Layers, Key, Check, X, Sparkles, ShieldCheck } from 'lucide-react';
+import {
+  Navigation,
+  Locate,
+  Compass,
+  Layers,
+  Key,
+  Check,
+  X,
+  ExternalLink,
+  Radio,
+  BatteryCharging,
+  Wind,
+  ShieldCheck,
+  MapPin,
+  Clock,
+  Sparkles,
+  Footprints,
+} from 'lucide-react';
 import { fetchMultiStopRoadRoute } from '../services/roadRoutingService';
+import {
+  getCurrentUserLocation,
+  watchLiveLocation,
+  clearLiveLocationWatch,
+  calculateDistanceKm,
+  formatDistance,
+  estimateWalkingTime,
+  getGoogleMapsDirectionsUrl,
+} from '../services/locationService';
 
-// Stream icons & color mapping
-const STREAM_META = {
-  Plastic: { icon: '🥤', color: '#3b82f6', bg: '#2563eb' },
-  Organic: { icon: '🍏', color: '#10b981', bg: '#059669' },
-  Paper: { icon: '📦', color: '#f59e0b', bg: '#d97706' },
-  Glass: { icon: '🍾', color: '#14b8a6', bg: '#0d9488' },
-  Metal: { icon: '⚙️', color: '#6366f1', bg: '#4f46e5' },
-  'E-Waste': { icon: '⚡', color: '#eab308', bg: '#ca8a04' },
-  Hazardous: { icon: '☣️', color: '#ef4444', bg: '#dc2626' },
-  General: { icon: '🗑️', color: '#64748b', bg: '#475569' },
-};
-
-// Default installed bins pre-loaded so map is NEVER empty
+// Default installed bins pre-loaded for fallback so map is never empty
 export const DEFAULT_INSTALLED_BINS = [
-  { id: 1, bin_code: 'BIN-001', location_name: 'Central Plaza North Wing', latitude: 12.9719, longitude: 77.5937, capacity: 100, current_fill_percentage: 92.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Critical' },
-  { id: 2, bin_code: 'BIN-002', location_name: 'Science Quadrangle Garden', latitude: 12.9734, longitude: 77.5951, capacity: 100, current_fill_percentage: 78.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Almost Full' },
-  { id: 3, bin_code: 'BIN-003', location_name: 'Library Building Entrance', latitude: 12.9698, longitude: 77.5912, capacity: 100, current_fill_percentage: 45.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Normal' },
-  { id: 4, bin_code: 'BIN-004', location_name: 'Cafeteria Recycling Bay', latitude: 12.9705, longitude: 77.5968, capacity: 100, current_fill_percentage: 65.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Moderate' },
-  { id: 5, bin_code: 'BIN-005', location_name: 'Engineering Workshop Area', latitude: 12.9742, longitude: 77.5925, capacity: 100, current_fill_percentage: 88.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Almost Full' },
-  { id: 6, bin_code: 'BIN-006', location_name: 'IT Tech Park Block A', latitude: 12.9755, longitude: 77.5982, capacity: 100, current_fill_percentage: 20.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Normal' },
-  { id: 7, bin_code: 'BIN-007', location_name: 'Student Center Courtyard', latitude: 12.9682, longitude: 77.5974, capacity: 100, current_fill_percentage: 55.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Moderate' },
-  { id: 8, bin_code: 'BIN-008', location_name: 'Chemistry Research Labs', latitude: 12.9768, longitude: 77.5915, capacity: 100, current_fill_percentage: 15.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Normal' },
-  { id: 9, bin_code: 'BIN-009', location_name: 'Sports Complex Main Gate', latitude: 12.9675, longitude: 77.5901, capacity: 100, current_fill_percentage: 82.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Almost Full' },
-  { id: 10, bin_code: 'BIN-010', location_name: 'Botanical Park Walkway', latitude: 12.9728, longitude: 77.6002, capacity: 100, current_fill_percentage: 30.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Normal' },
+  { id: 1, bin_code: 'BIN-001', location_name: 'Central Plaza North Wing', latitude: 12.9719, longitude: 77.5937, capacity: 100, current_fill_percentage: 92.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Critical', battery_level_pct: 95, gas_level_ppm: 78, ward: 'Ward 101' },
+  { id: 2, bin_code: 'BIN-002', location_name: 'Science Quadrangle Garden', latitude: 12.9734, longitude: 77.5951, capacity: 100, current_fill_percentage: 78.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Almost Full', battery_level_pct: 88, gas_level_ppm: 42, ward: 'Ward 101' },
+  { id: 3, bin_code: 'BIN-003', location_name: 'Library Building Entrance', latitude: 12.9698, longitude: 77.5912, capacity: 100, current_fill_percentage: 45.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Normal', battery_level_pct: 92, gas_level_ppm: 18, ward: 'Ward 102' },
+  { id: 4, bin_code: 'BIN-004', location_name: 'Cafeteria Recycling Bay', latitude: 12.9705, longitude: 77.5968, capacity: 100, current_fill_percentage: 65.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Moderate', battery_level_pct: 84, gas_level_ppm: 34, ward: 'Ward 102' },
+  { id: 5, bin_code: 'BIN-005', location_name: 'Engineering Workshop Area', latitude: 12.9742, longitude: 77.5925, capacity: 100, current_fill_percentage: 88.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Almost Full', battery_level_pct: 90, gas_level_ppm: 55, ward: 'Ward 103' },
+  { id: 6, bin_code: 'BIN-006', location_name: 'IT Tech Park Block A', latitude: 12.9755, longitude: 77.5982, capacity: 100, current_fill_percentage: 20.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Normal', battery_level_pct: 98, gas_level_ppm: 12, ward: 'Ward 103' },
+  { id: 7, bin_code: 'BIN-007', location_name: 'Student Center Courtyard', latitude: 12.9682, longitude: 77.5974, capacity: 100, current_fill_percentage: 55.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Moderate', battery_level_pct: 91, gas_level_ppm: 26, ward: 'Ward 104' },
+  { id: 8, bin_code: 'BIN-008', location_name: 'Chemistry Research Labs', latitude: 12.9768, longitude: 77.5915, capacity: 100, current_fill_percentage: 15.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Normal', battery_level_pct: 96, gas_level_ppm: 14, ward: 'Ward 104' },
+  { id: 9, bin_code: 'BIN-009', location_name: 'Sports Complex Main Gate', latitude: 12.9675, longitude: 77.5901, capacity: 100, current_fill_percentage: 82.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Almost Full', battery_level_pct: 82, gas_level_ppm: 62, ward: 'Ward 105' },
+  { id: 10, bin_code: 'BIN-010', location_name: 'Botanical Park Walkway', latitude: 12.9728, longitude: 77.6002, capacity: 100, current_fill_percentage: 30.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Normal', battery_level_pct: 94, gas_level_ppm: 16, ward: 'Ward 105' },
 ];
 
 // High-tech glowing SVG markers with fill percent badge
@@ -77,18 +91,21 @@ function createBinIcon(bin) {
   });
 }
 
-// User current location pulsing radar marker
+// User current location pulsing radar marker with accuracy ripple
 const userLocationIcon = L.divIcon({
   html: `
     <div style="position: relative; display: flex; align-items: center; justify-content: center;">
       <div style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(59, 130, 246, 0.4); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-      <div style="width: 20px; height: 20px; border-radius: 50%; background: #2563eb; border: 3px solid #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.5); position: relative; z-index: 2;"></div>
-      <div style="position: absolute; top: 24px; background: #0f172a; color: #93c5fd; padding: 2px 7px; border-radius: 6px; font-size: 9px; font-weight: 800; white-space: nowrap; border: 1px solid rgba(59, 130, 246, 0.5);">You Are Here</div>
+      <div style="width: 22px; height: 22px; border-radius: 50%; background: #2563eb; border: 3px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.6); position: relative; z-index: 2;"></div>
+      <div style="position: absolute; top: 26px; background: #0f172a; color: #93c5fd; padding: 2px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; white-space: nowrap; border: 1px solid rgba(59, 130, 246, 0.6); box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+        📍 You Are Here
+      </div>
     </div>
   `,
   className: 'user-location-pin',
   iconSize: [44, 44],
   iconAnchor: [22, 22],
+  popupAnchor: [0, -22],
 });
 
 // Live Moving Garbage Collection Vehicle (Truck "Alpha-01")
@@ -109,6 +126,25 @@ const truckIcon = L.divIcon({
   iconAnchor: [22, 46],
 });
 
+// Selected Incident Marker (Drop pin)
+const incidentSelectedIcon = L.divIcon({
+  html: `
+    <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
+      <div style="position: absolute; inset: -6px; border-radius: 9999px; background: rgba(225, 29, 72, 0.4); animation: ping 1.5s infinite;"></div>
+      <div style="background: #e11d48; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #ffffff; box-shadow: 0 4px 14px rgba(225, 29, 72, 0.6); position: relative; z-index: 2;">
+        <span style="font-size: 16px;">📍</span>
+      </div>
+      <div style="background: #0f172a; color: #fda4af; padding: 2px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; white-space: nowrap; margin-top: 3px; border: 1px solid rgba(225, 29, 72, 0.6);">
+        Incident Pin
+      </div>
+    </div>
+  `,
+  className: 'custom-selected-pin',
+  iconSize: [40, 52],
+  iconAnchor: [20, 42],
+  popupAnchor: [0, -36],
+});
+
 // Complaint Incident Marker
 const complaintIcon = L.divIcon({
   html: `
@@ -122,15 +158,21 @@ const complaintIcon = L.divIcon({
   popupAnchor: [0, -30],
 });
 
-// Auto-Fit Bounds helper to frame all bins nicely
-function AutoFitBounds({ bins }) {
+// Auto-Fit Bounds helper - only fits when allowed
+function AutoFitBounds({ bins, enabled = true }) {
   const map = useMap();
   useEffect(() => {
-    if (bins && bins.length > 0) {
-      const bounds = L.latLngBounds(bins.map((b) => [b.latitude, b.longitude]));
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+    if (enabled && bins && bins.length > 0) {
+      try {
+        const bounds = L.latLngBounds(bins.map((b) => [b.latitude, b.longitude]));
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+        }
+      } catch (e) {
+        // Safe catch for invalid bounds
+      }
     }
-  }, [bins, map]);
+  }, [bins, map, enabled]);
   return null;
 }
 
@@ -146,12 +188,12 @@ function LocationPicker({ onLocationSelect }) {
   return null;
 }
 
-// Recenter component
+// Recenter component with smooth flyTo animation
 function MapController({ center, zoom }) {
   const map = useMap();
   useEffect(() => {
-    if (center) {
-      map.setView(center, zoom || map.getZoom());
+    if (center && Array.isArray(center) && center.length === 2 && !isNaN(center[0]) && !isNaN(center[1])) {
+      map.flyTo(center, zoom || map.getZoom(), { duration: 1.2 });
     }
   }, [center, zoom, map]);
   return null;
@@ -172,11 +214,40 @@ export default function LeafletMap({
   dispatchTargetBin,
   isDispatching,
   activeRoadRoute = [],
+  disableDefaultFallback = false,
+  userLocation: externalUserLocation = null,
+  onUserLocationChange,
 }) {
-  const [userLocation, setUserLocation] = useState(null);
+  const [userLocation, setUserLocation] = useState(externalUserLocation);
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  const [isWatchingLive, setIsWatchingLive] = useState(false);
+  const [liveWatchId, setLiveWatchId] = useState(null);
   const [locationStatus, setLocationStatus] = useState('');
   const [activeCenter, setActiveCenter] = useState(center);
   const [roadRouteStops, setRoadRouteStops] = useState([]);
+
+  // Sync external user location if provided
+  useEffect(() => {
+    if (externalUserLocation) {
+      setUserLocation(externalUserLocation);
+    }
+  }, [externalUserLocation]);
+
+  // Sync center prop if changed externally
+  useEffect(() => {
+    if (center) {
+      setActiveCenter(center);
+    }
+  }, [center]);
+
+  // Cleanup GPS watcher on unmount
+  useEffect(() => {
+    return () => {
+      if (liveWatchId != null) {
+        clearLiveLocationWatch(liveWatchId);
+      }
+    };
+  }, [liveWatchId]);
 
   // Load road-following route for collector multi-stop route
   useEffect(() => {
@@ -211,43 +282,81 @@ export default function LeafletMap({
     return customKey ? 'carto' : 'osm';
   });
 
-  // If bins prop is empty, use pre-loaded installed bins so the map is NEVER blank
-  const activeBins = bins && bins.length > 0 ? bins : DEFAULT_INSTALLED_BINS;
+  // Determine active bins: if caller explicitly supplied empty bins and disabled fallback or selectedLocation is active, do not force Bangalore bins
+  const activeBins =
+    bins && bins.length > 0
+      ? bins
+      : disableDefaultFallback || selectedLocation
+      ? []
+      : DEFAULT_INSTALLED_BINS;
 
-  // Handle Geolocation with graceful HTTP fallback
-  const handleLocateMe = () => {
-    setLocationStatus('Accessing live GPS...');
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
+  // Don't auto-fit bounds if user explicitly has a selectedLocation or has active GPS
+  const shouldAutoFit = !selectedLocation && !userLocation && activeBins.length > 0;
+
+  // Handle High-Accuracy Geolocation Lock
+  const handleLocateMe = async () => {
+    setLocationStatus('🛰️ Acquiring high-accuracy live GPS fix...');
+    try {
+      const pos = await getCurrentUserLocation({ enableHighAccuracy: true, timeout: 9000 });
+      const coords = [pos.latitude, pos.longitude];
+      setUserLocation(coords);
+      setGpsAccuracy(pos.accuracy);
+      setActiveCenter(coords);
+      setLocationStatus(`✓ Live GPS Locked! (Accuracy: ±${pos.accuracy}m)`);
+
+      if (onUserLocationChange) {
+        onUserLocationChange(coords, pos);
+      }
+      if (onLocationSelect) {
+        onLocationSelect(pos.latitude, pos.longitude);
+      }
+      setTimeout(() => setLocationStatus(''), 5000);
+    } catch (err) {
+      console.warn('Geolocation error:', err.message);
+      const fallback = [12.9716, 77.5946];
+      setUserLocation(fallback);
+      setActiveCenter(fallback);
+      setLocationStatus(`⚠️ ${err.message}. Centered to City Hub.`);
+      if (onUserLocationChange) onUserLocationChange(fallback);
+      if (onLocationSelect) onLocationSelect(fallback[0], fallback[1]);
+      setTimeout(() => setLocationStatus(''), 6000);
+    }
+  };
+
+  // Toggle Continuous Real-Time GPS Tracking
+  const toggleLiveTracking = () => {
+    if (isWatchingLive) {
+      clearLiveLocationWatch(liveWatchId);
+      setLiveWatchId(null);
+      setIsWatchingLive(false);
+      setLocationStatus('Live GPS tracking paused.');
+      setTimeout(() => setLocationStatus(''), 3000);
+    } else {
+      setLocationStatus('🛰️ Live continuous GPS tracking engaged...');
+      const id = watchLiveLocation(
         (pos) => {
-          const coords = [pos.coords.latitude, pos.coords.longitude];
+          const coords = [pos.latitude, pos.longitude];
           setUserLocation(coords);
+          setGpsAccuracy(pos.accuracy);
           setActiveCenter(coords);
-          setLocationStatus('✓ Live GPS Locked!');
-          if (onLocationSelect) {
-            onLocationSelect(pos.coords.latitude, pos.coords.longitude);
-          }
-          setTimeout(() => setLocationStatus(''), 4000);
+          if (onUserLocationChange) onUserLocationChange(coords, pos);
+          if (onLocationSelect) onLocationSelect(pos.latitude, pos.longitude);
         },
         (err) => {
-          const fallback = [12.9716, 77.5946];
-          setUserLocation(fallback);
-          setActiveCenter(fallback);
-          if (onLocationSelect) {
-            onLocationSelect(fallback[0], fallback[1]);
-          }
-          setLocationStatus('GPS restricted on HTTP. Centered to City Operations Zone [12.9716, 77.5946].');
-          setTimeout(() => setLocationStatus(''), 5000);
+          setLocationStatus(`⚠️ GPS Tracking error: ${err.message}`);
         },
-        { enableHighAccuracy: true, timeout: 7000 }
+        { enableHighAccuracy: true }
       );
-    } else {
-      setLocationStatus('Geolocation is not supported by this browser.');
+      setLiveWatchId(id);
+      setIsWatchingLive(true);
+      setLocationStatus('🟢 Live GPS Follow Mode Active (Updating continuously)');
     }
   };
 
   const handleCenterCity = () => {
     setActiveCenter([12.9716, 77.5946]);
+    setLocationStatus('Centered to City Operations Hub.');
+    setTimeout(() => setLocationStatus(''), 3000);
   };
 
   const polylinePositions =
@@ -263,10 +372,23 @@ export default function LeafletMap({
           <button
             onClick={handleLocateMe}
             className="px-3 py-1.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5 shadow-sm active:scale-95"
-            title="Access Live GPS Location"
+            title="Access High-Accuracy Live GPS Location"
           >
             <Locate className="w-3.5 h-3.5" />
             <span>Locate Me</span>
+          </button>
+
+          <button
+            onClick={toggleLiveTracking}
+            className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 shadow-sm active:scale-95 ${
+              isWatchingLive
+                ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/50'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+            }`}
+            title="Toggle Continuous Live GPS Tracking"
+          >
+            <Radio className={`w-3.5 h-3.5 ${isWatchingLive ? 'animate-pulse text-white' : 'text-slate-400'}`} />
+            <span>{isWatchingLive ? 'Live Tracking On' : 'Live Follow'}</span>
           </button>
 
           <button
@@ -376,7 +498,7 @@ export default function LeafletMap({
                   >
                     carto.com/basemaps/apikey
                   </a>
-                  . OpenStreetMap requires zero keys.
+                  . OpenStreetMap works out of the box with zero keys.
                 </p>
               </div>
 
@@ -443,7 +565,7 @@ export default function LeafletMap({
         style={{ height: '100%', width: '100%' }}
       >
         <MapController center={activeCenter} zoom={zoom} />
-        <AutoFitBounds bins={activeBins} />
+        <AutoFitBounds bins={activeBins} enabled={shouldAutoFit} />
         {onLocationSelect && <LocationPicker onLocationSelect={onLocationSelect} />}
 
         {/* Dynamic Tile Layer: OpenStreetMap (Zero Key, No Watermark) or CARTO HD (with API Key) */}
@@ -497,12 +619,12 @@ export default function LeafletMap({
         {truckPosition && (
           <Marker position={truckPosition} icon={truckIcon}>
             <Popup>
-              <div className="p-1 min-w-[190px] font-sans">
+              <div className="p-1 min-w-[200px] font-sans">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-base">🚚</span>
                   <strong className="text-blue-400 text-xs">Vehicle Alpha-01 (Municipal Fleet)</strong>
                 </div>
-                <p className="text-[11px] text-slate-300">Status: Dispatched to Critical Bins</p>
+                <p className="text-[11px] text-slate-300">Status: Dispatched to Priority Bins</p>
                 <div className="mt-2 text-[10px] text-slate-400 font-mono">
                   Coordinates: {truckPosition[0].toFixed(4)}, {truckPosition[1].toFixed(4)}
                 </div>
@@ -511,142 +633,218 @@ export default function LeafletMap({
           </Marker>
         )}
 
+        {/* GPS Accuracy Circle */}
+        {userLocation && gpsAccuracy && gpsAccuracy < 1500 && (
+          <Circle
+            center={userLocation}
+            radius={gpsAccuracy}
+            pathOptions={{
+              color: '#3b82f6',
+              fillColor: '#3b82f6',
+              fillOpacity: 0.12,
+              weight: 1.5,
+              dashArray: '3, 4',
+            }}
+          />
+        )}
+
         {/* User Current Location Marker */}
         {userLocation && (
           <Marker position={userLocation} icon={userLocationIcon}>
             <Popup>
-              <div className="p-1 text-xs">
-                <strong className="text-blue-400 block mb-1">Your GPS Location</strong>
-                <span className="text-slate-300 font-mono">{userLocation[0].toFixed(4)}, {userLocation[1].toFixed(4)}</span>
+              <div className="p-1.5 text-xs font-sans min-w-[180px]">
+                <strong className="text-blue-400 block mb-1 text-xs">📍 Your Live GPS Location</strong>
+                <p className="text-slate-300 font-mono text-[11px]">
+                  {userLocation[0].toFixed(5)}, {userLocation[1].toFixed(5)}
+                </p>
+                {gpsAccuracy && (
+                  <p className="text-[10px] text-emerald-400 mt-1 font-semibold">
+                    GPS Accuracy: ±{gpsAccuracy} meters
+                  </p>
+                )}
+                {isWatchingLive && (
+                  <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    Live Follow Mode Active
+                  </span>
+                )}
               </div>
             </Popup>
           </Marker>
         )}
 
         {/* Smart Bin Hardware Nodes */}
-        {activeBins.map((bin) => (
-          <Marker
-            key={`bin-${bin.id}`}
-            position={[bin.latitude, bin.longitude]}
-            icon={createBinIcon(bin)}
-            eventHandlers={{
-              click: () => onBinClick && onBinClick(bin),
-            }}
-          >
-            <Popup>
-              <div className="p-2 min-w-[240px] font-sans">
-                <div className="flex items-center justify-between border-b border-slate-700/80 pb-2 mb-2">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-sm font-black text-white">{bin.bin_code}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-950/80 text-purple-300 border border-purple-700/60">
-                      All-in-One AI Bin
-                    </span>
-                  </div>
-                  <span
-                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                      bin.current_fill_percentage >= 91
-                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                        : bin.current_fill_percentage >= 76
-                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                    }`}
-                  >
-                    {bin.status}
-                  </span>
-                </div>
+        {activeBins.map((bin) => {
+          const userDistKm = userLocation ? calculateDistanceKm(userLocation[0], userLocation[1], bin.latitude, bin.longitude) : null;
+          const navUrl = getGoogleMapsDirectionsUrl({
+            destinationLat: bin.latitude,
+            destinationLng: bin.longitude,
+            originLat: userLocation?.[0],
+            originLng: userLocation?.[1],
+            travelMode: 'walking',
+          });
 
-                <p className="text-xs text-slate-300 font-medium mb-2">{bin.location_name}</p>
-
-                <div className="mb-2">
-                  <div className="flex justify-between text-xs font-bold mb-1">
-                    <span className="text-slate-400">Total Fill Level:</span>
+          return (
+            <Marker
+              key={`bin-${bin.id}`}
+              position={[bin.latitude, bin.longitude]}
+              icon={createBinIcon(bin)}
+              eventHandlers={{
+                click: () => onBinClick && onBinClick(bin),
+              }}
+            >
+              <Popup>
+                <div className="p-2 min-w-[260px] font-sans">
+                  {/* Bin Header */}
+                  <div className="flex items-center justify-between border-b border-slate-700/80 pb-2 mb-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-black text-white">{bin.bin_code}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-950/80 text-purple-300 border border-purple-700/60">
+                        All-in-One AI Bin
+                      </span>
+                    </div>
                     <span
-                      className={
+                      className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
                         bin.current_fill_percentage >= 91
-                          ? 'text-rose-400'
+                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
                           : bin.current_fill_percentage >= 76
-                          ? 'text-amber-400'
-                          : 'text-emerald-400'
-                      }
-                    >
-                      {bin.current_fill_percentage}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
-                    <div
-                      className={`h-2 rounded-full transition-all ${
-                        bin.current_fill_percentage >= 91
-                          ? 'bg-rose-500'
-                          : bin.current_fill_percentage >= 76
-                          ? 'bg-amber-500'
-                          : 'bg-emerald-500'
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                       }`}
-                      style={{ width: `${Math.min(100, bin.current_fill_percentage)}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* 6-Stream Chambers Mini Bar */}
-                <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 mb-2">
-                  <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400 mb-1">
-                    <span>Internal Chambers:</span>
-                    <span className="text-emerald-400 font-bold">Auto-Sorted</span>
-                  </div>
-                  <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-slate-950 gap-0.5">
-                    <div className="h-full bg-blue-500" style={{ width: '28%' }} title="Plastic" />
-                    <div className="h-full bg-emerald-500" style={{ width: '25%' }} title="Organic" />
-                    <div className="h-full bg-amber-500" style={{ width: '18%' }} title="Paper" />
-                    <div className="h-full bg-teal-500" style={{ width: '14%' }} title="Glass" />
-                    <div className="h-full bg-indigo-500" style={{ width: '10%' }} title="Metal" />
-                    <div className="h-full bg-yellow-500" style={{ width: '5%' }} title="E-Waste" />
-                  </div>
-                  <div className="flex items-center justify-between text-[9px] text-slate-400 mt-1 font-mono">
-                    <span>🍏 🥤 📦 🍾 ⚙️ ⚡</span>
-                    <span className="text-purple-300">All Streams Accepted</span>
-                  </div>
-                </div>
-
-                <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
-                  <span>Height: {bin.capacity} cm</span>
-                  <span className="font-mono">{bin.latitude.toFixed(4)}, {bin.longitude.toFixed(4)}</span>
-                </div>
-
-                {onDispatchBin && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDispatchBin(bin);
-                    }}
-                    disabled={isDispatching}
-                    className={`mt-2.5 w-full py-2 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 shadow-md active:scale-95 disabled:opacity-60 ${
-                      isDispatching && dispatchTargetBin?.bin_code === bin.bin_code
-                        ? 'bg-amber-500 text-slate-950 animate-pulse font-bold'
-                        : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40'
-                    }`}
-                  >
-                    <span>🚚</span>
-                    <span>
-                      {isDispatching && dispatchTargetBin?.bin_code === bin.bin_code
-                        ? 'Alpha-01 En Route to this Bin...'
-                        : 'Accept & Dispatch Truck'}
+                    >
+                      {bin.status}
                     </span>
-                  </button>
-                )}
+                  </div>
 
-                {onBinClick && (
-                  <button
-                    type="button"
-                    onClick={() => onBinClick(bin)}
-                    className="mt-1.5 w-full py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1 border border-slate-700 active:scale-95"
+                  <p className="text-xs text-slate-300 font-medium mb-1.5">{bin.location_name}</p>
+
+                  {/* Real-World Distance from User */}
+                  {userDistKm != null && (
+                    <div className="p-1.5 rounded-lg bg-blue-950/40 border border-blue-800/40 flex items-center justify-between text-[11px] mb-2 font-medium text-blue-200">
+                      <span className="flex items-center gap-1">
+                        <Footprints className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Distance: <strong>{formatDistance(userDistKm)}</strong></span>
+                      </span>
+                      <span className="text-slate-400 text-[10px] font-semibold">{estimateWalkingTime(userDistKm)}</span>
+                    </div>
+                  )}
+
+                  {/* Fill Level Progress */}
+                  <div className="mb-2">
+                    <div className="flex justify-between text-xs font-bold mb-1">
+                      <span className="text-slate-400">Total Fill Level:</span>
+                      <span
+                        className={
+                          bin.current_fill_percentage >= 91
+                            ? 'text-rose-400'
+                            : bin.current_fill_percentage >= 76
+                            ? 'text-amber-400'
+                            : 'text-emerald-400'
+                        }
+                      >
+                        {bin.current_fill_percentage}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
+                      <div
+                        className={`h-2 rounded-full transition-all ${
+                          bin.current_fill_percentage >= 91
+                            ? 'bg-rose-500'
+                            : bin.current_fill_percentage >= 76
+                            ? 'bg-amber-500'
+                            : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${Math.min(100, bin.current_fill_percentage)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* IoT Sensors Telemetry Badge Bar */}
+                  <div className="grid grid-cols-2 gap-1.5 mb-2 text-[10px]">
+                    <div className="p-1 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <BatteryCharging className="w-3 h-3 text-emerald-400" />
+                        <span>Battery</span>
+                      </span>
+                      <span className="font-bold text-slate-200">{bin.battery_level_pct || 92}% Solar</span>
+                    </div>
+                    <div className="p-1 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <Wind className="w-3 h-3 text-amber-400" />
+                        <span>Odor/Gas</span>
+                      </span>
+                      <span className="font-bold text-slate-200">{bin.gas_level_ppm || 24} ppm</span>
+                    </div>
+                  </div>
+
+                  {/* 6-Stream Chambers Mini Bar */}
+                  <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 mb-2">
+                    <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400 mb-1">
+                      <span>Internal Chambers:</span>
+                      <span className="text-emerald-400 font-bold">Auto-Sorted</span>
+                    </div>
+                    <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-slate-950 gap-0.5">
+                      <div className="h-full bg-blue-500" style={{ width: '28%' }} title="Plastic" />
+                      <div className="h-full bg-emerald-500" style={{ width: '25%' }} title="Organic" />
+                      <div className="h-full bg-amber-500" style={{ width: '18%' }} title="Paper" />
+                      <div className="h-full bg-teal-500" style={{ width: '14%' }} title="Glass" />
+                      <div className="h-full bg-indigo-500" style={{ width: '10%' }} title="Metal" />
+                      <div className="h-full bg-yellow-500" style={{ width: '5%' }} title="E-Waste" />
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-slate-400 mt-1 font-mono">
+                      <span>🍏 🥤 📦 🍾 ⚙️ ⚡</span>
+                      <span className="text-purple-300">All Streams Accepted</span>
+                    </div>
+                  </div>
+
+                  {/* Google Maps External Directions Link */}
+                  <a
+                    href={navUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-1.5 px-3 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 text-xs font-bold transition flex items-center justify-center gap-1.5 border border-emerald-600/40 mb-1.5 active:scale-95 shadow-sm"
                   >
-                    <span>Deposit & Inspect Multi-Chambers →</span>
-                  </button>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+                    <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Navigate in Google Maps</span>
+                  </a>
+
+                  {onDispatchBin && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDispatchBin(bin);
+                      }}
+                      disabled={isDispatching}
+                      className={`w-full py-2 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 shadow-md active:scale-95 disabled:opacity-60 ${
+                        isDispatching && dispatchTargetBin?.bin_code === bin.bin_code
+                          ? 'bg-amber-500 text-slate-950 animate-pulse font-bold'
+                          : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40'
+                      }`}
+                    >
+                      <span>🚚</span>
+                      <span>
+                        {isDispatching && dispatchTargetBin?.bin_code === bin.bin_code
+                          ? 'Alpha-01 En Route to this Bin...'
+                          : 'Accept & Dispatch Truck'}
+                      </span>
+                    </button>
+                  )}
+
+                  {onBinClick && (
+                    <button
+                      type="button"
+                      onClick={() => onBinClick(bin)}
+                      className="mt-1.5 w-full py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1 border border-slate-700 active:scale-95"
+                    >
+                      <span>Deposit & Inspect Multi-Chambers →</span>
+                    </button>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
 
         {/* Complaints Markers */}
         {complaints.map((c) => (
@@ -666,9 +864,14 @@ export default function LeafletMap({
 
         {/* Interactive Selected Location Pin (when citizen clicks to report) */}
         {selectedLocation && (
-          <Marker position={[selectedLocation.latitude, selectedLocation.longitude]}>
+          <Marker position={[selectedLocation.latitude, selectedLocation.longitude]} icon={incidentSelectedIcon}>
             <Popup>
-              <div className="text-xs font-semibold p-1">Selected Location for Incident Report</div>
+              <div className="text-xs font-semibold p-1.5 text-slate-900">
+                <span className="text-rose-600 font-bold block mb-1">📍 Incident Report Pin</span>
+                <span className="text-slate-600 font-mono text-[11px]">
+                  {selectedLocation.latitude.toFixed(4)}, {selectedLocation.longitude.toFixed(4)}
+                </span>
+              </div>
             </Popup>
           </Marker>
         )}

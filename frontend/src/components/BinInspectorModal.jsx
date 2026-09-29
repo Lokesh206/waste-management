@@ -19,6 +19,9 @@ import {
   Eye,
   Check,
   Truck,
+  BatteryCharging,
+  Wind,
+  ShieldCheck,
 } from 'lucide-react';
 
 const STREAM_META = {
@@ -314,6 +317,25 @@ export default function BinInspectorModal({
                 <span className="font-mono text-[11px] text-slate-300">
                   {bin.latitude.toFixed(4)}, {bin.longitude.toFixed(4)}
                 </span>
+              </div>
+
+              {/* Solar Battery & Gas/Odor Sensors */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-slate-400">
+                    <BatteryCharging className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Battery:</span>
+                  </div>
+                  <span className="font-bold text-slate-200">{bin.battery_level_pct || 94}%</span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-slate-400">
+                    <Wind className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Odor/Gas:</span>
+                  </div>
+                  <span className="font-bold text-slate-200">{bin.gas_level_ppm || 24} ppm</span>
+                </div>
               </div>
             </div>
           </div>

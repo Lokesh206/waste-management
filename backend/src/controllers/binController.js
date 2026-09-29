@@ -77,6 +77,11 @@ function enrichBinWithAiClassification(bin) {
       last_confidence: 96.2,
       routing_action: 'Auto-diverted into Chamber #1 (Plastic)',
     },
+    battery_level_pct: Math.min(100, Math.round(86 + (seed % 14))),
+    gas_level_ppm: Math.round(15 + (fill >= 80 ? 45 + (seed % 25) : seed % 20)),
+    ward: `Ward ${101 + ((bin.id || 1) % 5)}`,
+    last_collected_at: new Date(Date.now() - (((bin.id || 1) * 7) % 48) * 3600 * 1000).toISOString(),
+    cleanliness_score: Math.max(50, 100 - fill),
   };
 }
 

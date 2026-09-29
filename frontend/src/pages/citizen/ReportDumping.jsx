@@ -9,18 +9,44 @@ import {
   CheckCircle2,
   Navigation,
   ArrowRight,
+  Locate,
+  Flame,
+  Radio,
+  FileText,
+  Clock,
+  Building,
 } from 'lucide-react';
+import {
+  getCurrentUserLocation,
+  reverseGeocode,
+} from '../../services/locationService';
+
+const INCIDENT_CATEGORIES = [
+  { id: 'overflow', label: 'Overflowing Public Bin', icon: '🗑️' },
+  { id: 'plastic_heap', label: 'Roadside Plastic & Waste Heap', icon: '🥤' },
+  { id: 'construction', label: 'Construction & Demolition Debris', icon: '🧱' },
+  { id: 'hazardous', label: 'Hazardous / Chemical Spill', icon: '☣️' },
+  { id: 'drain_block', label: 'Drain / Waterway Blockage', icon: '🌊' },
+  { id: 'dead_animal', label: 'Biohazard / Animal Waste', icon: '⚠️' },
+];
 
 export default function ReportDumping() {
   const [formData, setFormData] = useState({
     title: '',
+    category: INCIDENT_CATEGORIES[0].label,
+    urgency: 'Medium',
+    estimated_volume: '3-8 Bags (Medium Pile)',
+    address: '',
     description: '',
     latitude: 12.9716,
     longitude: 77.5946,
   });
+
   const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
 
@@ -38,45 +64,66 @@ export default function ReportDumping() {
     }
   };
 
-  const handleUseCurrentLocation = () => {
+  // High-accuracy live GPS locate with reverse geocoding
+  const handleUseCurrentLocation = async () => {
     setError('');
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setFormData((prev) => ({
-            ...prev,
-            latitude: parseFloat(pos.coords.latitude.toFixed(5)),
-            longitude: parseFloat(pos.coords.longitude.toFixed(5)),
-          }));
-        },
-        (err) => {
-          setFormData((prev) => ({
-            ...prev,
-            latitude: 12.9716,
-            longitude: 77.5946,
-          }));
-          setError('Live GPS restricted by browser on plain HTTP origin. Centered to City Zone [12.9716, 77.5946] - click anywhere on the map to place the incident pin.');
-        },
-        { enableHighAccuracy: true, timeout: 6000 }
-      );
-    } else {
-      setFormData((prev) => ({ ...prev, latitude: 12.9716, longitude: 77.5946 }));
-      setError('Geolocation not supported. Centered to City Zone [12.9716, 77.5946]. Click map to place pin.');
+    setLocating(true);
+    try {
+      const pos = await getCurrentUserLocation({ enableHighAccuracy: true, timeout: 9000 });
+      setFormData((prev) => ({
+        ...prev,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      }));
+
+      // Resolve human-readable address
+      setGeocoding(true);
+      const geo = await reverseGeocode(pos.latitude, pos.longitude);
+      if (geo && geo.formattedAddress) {
+        setFormData((prev) => ({
+          ...prev,
+          address: geo.formattedAddress,
+        }));
+      }
+    } catch (err) {
+      setError(err.message || 'GPS signal unavailable. You can click anywhere on the map to place the incident pin.');
+    } finally {
+      setLocating(false);
+      setGeocoding(false);
     }
   };
 
-  const handleMapClick = (lat, lng) => {
+  // Handle manual map click with reverse geocode
+  const handleMapClick = async (lat, lng) => {
+    const fixedLat = parseFloat(lat.toFixed(5));
+    const fixedLng = parseFloat(lng.toFixed(5));
+
     setFormData((prev) => ({
       ...prev,
-      latitude: parseFloat(lat.toFixed(5)),
-      longitude: parseFloat(lng.toFixed(5)),
+      latitude: fixedLat,
+      longitude: fixedLng,
     }));
+
+    setGeocoding(true);
+    try {
+      const geo = await reverseGeocode(fixedLat, fixedLng);
+      if (geo && geo.formattedAddress) {
+        setFormData((prev) => ({
+          ...prev,
+          address: geo.formattedAddress,
+        }));
+      }
+    } catch (e) {
+      // Ignored
+    } finally {
+      setGeocoding(false);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.title || !formData.description) {
-      return setError('Title and description are required.');
+      return setError('Title and detailed description are required.');
     }
 
     setLoading(true);
@@ -85,7 +132,17 @@ export default function ReportDumping() {
     try {
       const data = new FormData();
       data.append('title', formData.title);
-      data.append('description', formData.description);
+      
+      // Structure real-world incident details into description
+      const fullDescription = [
+        `[Category: ${formData.category}]`,
+        `[Urgency: ${formData.urgency}]`,
+        `[Volume: ${formData.estimated_volume}]`,
+        formData.address ? `[Location: ${formData.address}]` : '',
+        formData.description.trim(),
+      ].filter(Boolean).join('\n\n');
+
+      data.append('description', fullDescription);
       data.append('latitude', formData.latitude);
       data.append('longitude', formData.longitude);
       if (imageFile) {
@@ -99,7 +156,7 @@ export default function ReportDumping() {
         setError(res.data.message || 'Failed to submit dumping report.');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Error submitting report.');
+      setError(err.response?.data?.message || 'Error transmitting report to municipal servers.');
     } finally {
       setLoading(false);
     }
@@ -110,36 +167,45 @@ export default function ReportDumping() {
       <div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold mb-2">
           <AlertTriangle className="w-3.5 h-3.5" />
-          <span>Illegal Dumping Enforcement</span>
+          <span>Real-World Citizen Enforcement</span>
         </div>
         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Report Illegal Waste Dumping</h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">
-          Help maintain municipal cleanliness. Upload evidence and precise GPS coordinates for municipal action.
+          Help maintain municipal cleanliness and public health. Upload photo evidence and pin the exact GPS coordinates for municipal sanitation dispatch.
         </p>
       </div>
 
       {error && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs flex items-center gap-2">
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs flex items-center gap-2 animate-in fade-in">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {success ? (
-        <div className="bg-white rounded-3xl p-8 border border-emerald-200 text-center space-y-4 shadow-sm">
+        <div className="bg-white rounded-3xl p-8 border border-emerald-200 text-center space-y-4 shadow-sm animate-in zoom-in-95">
           <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center">
             <CheckCircle2 className="w-8 h-8" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900">Complaint Logged Successfully!</h2>
-          <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
-            Your complaint <span className="font-bold text-slate-900">#{success.id}</span> has been dispatched to municipal administrators.
-            You will receive in-app notifications as the status progresses.
+          <h2 className="text-2xl font-bold text-slate-900">Incident Dispatched to Municipal Authorities!</h2>
+          <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+            Your complaint <span className="font-bold text-slate-900">#{success.id}</span> has been geotagged at{' '}
+            <span className="font-mono text-emerald-700 font-bold">{formData.latitude.toFixed(4)}, {formData.longitude.toFixed(4)}</span> and routed to the ward sanitation supervisor.
           </p>
           <div className="pt-4 flex justify-center gap-3">
             <button
               onClick={() => {
                 setSuccess(null);
-                setFormData({ title: '', description: '', latitude: 12.9716, longitude: 77.5946 });
+                setFormData({
+                  title: '',
+                  category: INCIDENT_CATEGORIES[0].label,
+                  urgency: 'Medium',
+                  estimated_volume: '3-8 Bags (Medium Pile)',
+                  address: '',
+                  description: '',
+                  latitude: 12.9716,
+                  longitude: 77.5946,
+                });
                 setImageFile(null);
                 setPreview(null);
               }}
@@ -151,7 +217,7 @@ export default function ReportDumping() {
               onClick={() => navigate('/citizen')}
               className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition"
             >
-              Return to Dashboard
+              Return to Citizen Portal
             </button>
           </div>
         </div>
@@ -160,41 +226,105 @@ export default function ReportDumping() {
           {/* Left Column: Form Details & Image */}
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Incident Title</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Incident Category:
+              </label>
+              <div className="grid grid-cols-2 gap-1.5 text-xs">
+                {INCIDENT_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, category: cat.label })}
+                    className={`p-2 rounded-xl border text-left transition flex items-center gap-1.5 ${
+                      formData.category === cat.label
+                        ? 'bg-rose-50 border-rose-400 text-rose-900 font-bold shadow-2xs'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{cat.icon}</span>
+                    <span className="truncate text-[11px]">{cat.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Incident Headline</label>
               <input
                 type="text"
                 required
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="e.g., Plastic heap blocking walkway"
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                placeholder="e.g., Overflowing plastic garbage blocking road"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-medium"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Urgency Level</label>
+                <select
+                  value={formData.urgency}
+                  onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-700 focus:outline-none focus:border-rose-500"
+                >
+                  <option value="Low">Low (Routine Pickup)</option>
+                  <option value="Medium">Medium (Within 24 hrs)</option>
+                  <option value="Critical">Critical (Immediate Hazard)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Estimated Volume</label>
+                <select
+                  value={formData.estimated_volume}
+                  onChange={(e) => setFormData({ ...formData, estimated_volume: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-700 focus:outline-none focus:border-rose-500"
+                >
+                  <option value="1-2 Bags (Small)">1-2 Bags (Small)</option>
+                  <option value="3-8 Bags (Medium Pile)">3-8 Bags (Medium Pile)</option>
+                  <option value="Truckload / Heavy Dump">Truckload / Heavy Dump</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Resolved Street Address / Landmark:
+              </label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="Click map or 'Use My Location' to auto-detect street address..."
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-rose-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Detailed Description</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Detailed Description</label>
               <textarea
                 required
                 rows={3}
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Describe the waste type, approximate volume, and any immediate hazards..."
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                placeholder="Mention specific landmarks, foul odors, presence of sharp objects, or public obstruction..."
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
               />
             </div>
 
             {/* Photo Evidence Upload */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Photo Evidence (Optional)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Photo Evidence (Optional)</label>
               {!preview ? (
-                <label className="border-2 border-dashed border-slate-200 hover:border-emerald-500 rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-50/50">
-                  <UploadCloud className="w-8 h-8 text-slate-400 mb-2" />
-                  <span className="text-xs font-semibold text-slate-600">Upload Evidence Photo</span>
+                <label className="border-2 border-dashed border-slate-200 hover:border-rose-500 rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-50/50">
+                  <UploadCloud className="w-7 h-7 text-slate-400 mb-1" />
+                  <span className="text-xs font-bold text-slate-700">Upload Geotagged Photo</span>
                   <span className="text-[10px] text-slate-400">JPG, PNG up to 5MB</span>
                   <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 </label>
               ) : (
-                <div className="relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200 h-36">
+                <div className="relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200 h-32">
                   <img src={preview} alt="Evidence Preview" className="w-full h-full object-cover" />
                   <button
                     type="button"
@@ -202,60 +332,69 @@ export default function ReportDumping() {
                       setImageFile(null);
                       setPreview(null);
                     }}
-                    className="absolute top-2 right-2 px-2 py-1 bg-black/60 hover:bg-black text-white text-[10px] rounded font-semibold"
+                    className="absolute top-2 right-2 px-2.5 py-1 bg-black/70 hover:bg-black text-white text-[10px] font-bold rounded-lg"
                   >
-                    Change
+                    Change Photo
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Coordinates display & GPS Fetch */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-700">GPS Coordinates:</span>
-                <button
-                  type="button"
-                  onClick={handleUseCurrentLocation}
-                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
-                >
-                  <Navigation className="w-3.5 h-3.5" />
-                  <span>Use My Location</span>
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                <div className="bg-white p-2 rounded border border-slate-200">
-                  Lat: {formData.latitude}
-                </div>
-                <div className="bg-white p-2 rounded border border-slate-200">
-                  Lng: {formData.longitude}
-                </div>
-              </div>
-            </div>
-
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-98 transition shadow-sm flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-500 active:scale-98 transition shadow-md shadow-rose-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {loading ? 'Transmitting Report...' : 'Submit Dumping Report'}
+              {loading ? 'Transmitting Incident...' : 'Submit Incident Report to Municipality'}
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Right Column: Interactive Map Picker */}
+          {/* Right Column: Interactive Map Picker with Geocoding */}
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col space-y-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Pinpoint Location on Map</h2>
-              <p className="text-xs text-slate-500">Click anywhere on the map to place the incident pin.</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Pinpoint GPS Location</h2>
+                <p className="text-xs text-slate-500">Click anywhere on the map to place the incident pin.</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleUseCurrentLocation}
+                disabled={locating}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50"
+              >
+                <Locate className={`w-3.5 h-3.5 ${locating ? 'animate-spin' : ''}`} />
+                <span>{locating ? 'Acquiring GPS...' : 'Use My Location'}</span>
+              </button>
             </div>
 
-            <div className="flex-1 min-h-[350px]">
+            {/* Live Coordinates Display */}
+            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-slate-700">
+                <span className="text-[10px] text-slate-400 block font-sans">Latitude</span>
+                <strong>{formData.latitude.toFixed(5)}</strong>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 text-slate-700">
+                <span className="text-[10px] text-slate-400 block font-sans">Longitude</span>
+                <strong>{formData.longitude.toFixed(5)}</strong>
+              </div>
+            </div>
+
+            {geocoding && (
+              <div className="text-[11px] text-blue-600 font-medium flex items-center gap-1.5 animate-pulse">
+                <span>🛰️</span>
+                <span>Reverse geocoding street address from coordinates...</span>
+              </div>
+            )}
+
+            <div className="flex-1 min-h-[360px] rounded-2xl overflow-hidden border border-slate-200">
               <LeafletMap
                 center={[formData.latitude, formData.longitude]}
                 selectedLocation={{ latitude: formData.latitude, longitude: formData.longitude }}
                 onLocationSelect={handleMapClick}
                 height="380px"
+                disableDefaultFallback={true}
               />
             </div>
           </div>
@@ -264,4 +403,3 @@ export default function ReportDumping() {
     </div>
   );
 }
-

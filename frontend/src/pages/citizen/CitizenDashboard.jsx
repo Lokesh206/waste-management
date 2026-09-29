@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { wasteAPI, complaintsAPI, binsAPI, getImageUrl } from '../../services/api';
 import MetricCard from '../../components/MetricCard';
 import StatusBadge from '../../components/StatusBadge';
-import { Camera, AlertTriangle, MapPin, CheckCircle2, Clock, ArrowRight } from 'lucide-react';
+import { Camera, AlertTriangle, MapPin, CheckCircle2, Clock, ArrowRight, Sparkles, Award, Footprints } from 'lucide-react';
 
 export default function CitizenDashboard() {
   const { user } = useAuth();
@@ -49,17 +49,24 @@ export default function CitizenDashboard() {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2.5">
+          <Link
+            to="/citizen/bins"
+            className="px-4 py-2.5 rounded-xl font-bold text-xs bg-white text-emerald-900 hover:bg-emerald-50 shadow-sm transition flex items-center gap-2"
+          >
+            <MapPin className="w-4 h-4 text-emerald-600" />
+            <span>Nearby Bins (Live GPS)</span>
+          </Link>
           <Link
             to="/citizen/classify"
-            className="px-4 py-2.5 rounded-xl font-bold text-xs bg-white text-emerald-800 hover:bg-emerald-50 shadow-sm transition flex items-center gap-2"
+            className="px-4 py-2.5 rounded-xl font-bold text-xs bg-emerald-800 text-white hover:bg-emerald-900 border border-emerald-500/30 transition flex items-center gap-2"
           >
             <Camera className="w-4 h-4" />
             <span>AI Waste Scanner</span>
           </Link>
           <Link
             to="/citizen/report-dumping"
-            className="px-4 py-2.5 rounded-xl font-bold text-xs bg-emerald-800 text-white hover:bg-emerald-900 border border-emerald-500/30 transition flex items-center gap-2"
+            className="px-4 py-2.5 rounded-xl font-bold text-xs bg-rose-700 text-white hover:bg-rose-800 transition flex items-center gap-2 shadow-sm"
           >
             <AlertTriangle className="w-4 h-4" />
             <span>Report Dumping</span>
@@ -68,11 +75,18 @@ export default function CitizenDashboard() {
       </div>
 
       {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <MetricCard
+          title="Eco-Reward Points"
+          value={(classifications.length * 15) + (resolvedComplaints * 50) + (complaints.length * 20)}
+          subtitle="Green citizen credits"
+          icon={Sparkles}
+          color="emerald"
+        />
         <MetricCard
           title="Scanned Items"
           value={classifications.length}
-          subtitle="AI waste classifications"
+          subtitle="AI waste scans"
           icon={Camera}
           color="purple"
         />
@@ -86,16 +100,16 @@ export default function CitizenDashboard() {
         <MetricCard
           title="Reports Resolved"
           value={resolvedComplaints}
-          subtitle="Action taken by city"
+          subtitle="Cleaned by city"
           icon={CheckCircle2}
-          color="emerald"
+          color="blue"
         />
         <MetricCard
           title="Smart Bins"
           value={binsCount}
-          subtitle="Active bins monitored"
+          subtitle="Active sensor nodes"
           icon={MapPin}
-          color="blue"
+          color="slate"
         />
       </div>
 
