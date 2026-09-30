@@ -77,6 +77,7 @@ export default function CollectorDashboard() {
   const [collectWeightKg, setCollectWeightKg] = useState('25');
   const [collectProofPhoto, setCollectProofPhoto] = useState(null);
   const [lastVerificationResult, setLastVerificationResult] = useState(null);
+  const [selectedMapBin, setSelectedMapBin] = useState(null);
 
   const fetchCollectorData = async () => {
     try {
@@ -842,8 +843,69 @@ export default function CollectorDashboard() {
               dispatchTargetBin={dispatchTargetBin}
               activeRoadRoute={activeRoadRoute}
               onDispatchBin={handleDirectCollectBin}
+              onBinClick={(bin) => setSelectedMapBin(bin)}
             />
           </div>
+
+          {selectedMapBin && (
+            <div className="p-3.5 bg-slate-900 rounded-2xl border border-slate-800 text-white space-y-2.5 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono font-black text-xs text-white">{selectedMapBin.bin_code}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-900/60 text-purple-300 border border-purple-700/60">
+                    Selected Dustbin
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <StatusBadge status={selectedMapBin.status || 'Normal'} />
+                  <button
+                    onClick={() => setSelectedMapBin(null)}
+                    className="text-slate-400 hover:text-white text-xs font-bold px-1"
+                  >
+                    &times;
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-300 line-clamp-1">{selectedMapBin.location_name}</p>
+
+              <div className="flex items-center justify-between text-[11px] font-bold">
+                <span className="text-slate-400">Current Fill Level:</span>
+                <span className="text-rose-400">{Math.round(selectedMapBin.current_fill_percentage || 0)}% Full</span>
+              </div>
+
+              <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-rose-500 h-2 rounded-full transition-all"
+                  style={{ width: `${Math.min(100, Math.round(selectedMapBin.current_fill_percentage || 0))}%` }}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const matchingTask = tasks.find((t) => t.bin_id === selectedMapBin.id && t.status !== 'Completed');
+                    handleStartCollection(matchingTask || { bin_id: selectedMapBin.id, bin: selectedMapBin, id: `manual-${selectedMapBin.id}` });
+                  }}
+                  className="flex-1 py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center justify-center gap-1 shadow-sm"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Collect & Empty</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDirectCollectBin(selectedMapBin)}
+                  disabled={truckDispatching}
+                  className="py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  <span>Dispatch</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           <Link
             to="/collector/route"

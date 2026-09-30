@@ -18,6 +18,10 @@ import {
   Clock,
   Sparkles,
   Footprints,
+  Trash2,
+  Truck,
+  Activity,
+  Info,
 } from 'lucide-react';
 import { fetchMultiStopRoadRoute } from '../services/roadRoutingService';
 import {
@@ -56,26 +60,26 @@ function createBinIcon(bin) {
     borderColor = '#ef4444';
     ringBg = '#991b1b';
     pulseGlow = `
-      <div style="position: absolute; inset: -10px; border-radius: 9999px; background: rgba(239, 68, 68, 0.45); animation: ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-      <div style="position: absolute; inset: -4px; border-radius: 9999px; border: 2px solid #ef4444; animation: pulse 2s infinite;"></div>
+      <div style="position: absolute; inset: -10px; border-radius: 9999px; background: rgba(239, 68, 68, 0.45); animation: ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite; pointer-events: none;"></div>
+      <div style="position: absolute; inset: -4px; border-radius: 9999px; border: 2px solid #ef4444; animation: pulse 2s infinite; pointer-events: none;"></div>
     `;
   } else if (bin.status === 'Almost Full' || fill >= 76) {
     borderColor = '#f59e0b';
     ringBg = '#92400e';
-    pulseGlow = `<div style="position: absolute; inset: -6px; border-radius: 9999px; background: rgba(245, 158, 11, 0.3); animation: ping 2.5s infinite;"></div>`;
+    pulseGlow = `<div style="position: absolute; inset: -6px; border-radius: 9999px; background: rgba(245, 158, 11, 0.3); animation: ping 2.5s infinite; pointer-events: none;"></div>`;
   } else if (bin.status === 'Moderate' || fill >= 51) {
     borderColor = '#3b82f6';
     ringBg = '#1e40af';
   }
 
   const svgHtml = `
-    <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer; transform: translateZ(0);">
+    <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer; transform: translateZ(0); pointer-events: auto;">
       ${pulseGlow}
-      <div style="background: ${ringBg}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid ${borderColor}; box-shadow: 0 4px 14px rgba(0,0,0,0.6); position: relative; z-index: 20;">
+      <div style="background: ${ringBg}; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid ${borderColor}; box-shadow: 0 4px 14px rgba(0,0,0,0.6); position: relative; z-index: 20; pointer-events: auto;">
         <span style="color: #ffffff; font-size: 11px; font-weight: 900; font-family: ui-sans-serif, system-ui, sans-serif;">${fill}%</span>
       </div>
-      <div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 7px solid ${borderColor}; margin-top: -1px; position: relative; z-index: 19;"></div>
-      <div style="background: rgba(15, 23, 42, 0.95); color: #ffffff; padding: 2px 7px; border-radius: 8px; font-size: 9px; font-weight: 800; white-space: nowrap; margin-top: 3px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.25); display: flex; align-items: center; gap: 3px;">
+      <div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 7px solid ${borderColor}; margin-top: -1px; position: relative; z-index: 19; pointer-events: auto;"></div>
+      <div style="background: rgba(15, 23, 42, 0.95); color: #ffffff; padding: 2px 7px; border-radius: 8px; font-size: 9px; font-weight: 800; white-space: nowrap; margin-top: 3px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.25); display: flex; align-items: center; gap: 3px; pointer-events: auto;">
         <span>♻️</span>
         <span>${bin.bin_code}</span>
       </div>
@@ -225,6 +229,7 @@ export default function LeafletMap({
   const [locationStatus, setLocationStatus] = useState('');
   const [activeCenter, setActiveCenter] = useState(center);
   const [roadRouteStops, setRoadRouteStops] = useState([]);
+  const [selectedBinData, setSelectedBinData] = useState(null);
 
   // Sync external user location if provided
   useEffect(() => {
@@ -295,6 +300,16 @@ export default function LeafletMap({
 
   // Don't auto-fit bounds if user explicitly has a selectedLocation or has active GPS
   const shouldAutoFit = !selectedLocation && !userLocation && activeBins.length > 0;
+
+  // Keep selectedBinData synchronized with real-time telemetry updates
+  useEffect(() => {
+    if (selectedBinData) {
+      const refreshed = activeBins.find((b) => b.id === selectedBinData.id || b.bin_code === selectedBinData.bin_code);
+      if (refreshed) {
+        setSelectedBinData(refreshed);
+      }
+    }
+  }, [activeBins]);
 
   // Handle High-Accuracy Geolocation Lock
   const handleLocateMe = async () => {
@@ -665,21 +680,27 @@ export default function LeafletMap({
 
           return (
             <Marker
-              key={`bin-${bin.id}`}
+              key={`bin-${bin.id || bin.bin_code}`}
               position={[bin.latitude, bin.longitude]}
               icon={createBinIcon(bin)}
               eventHandlers={{
-                click: () => onBinClick && onBinClick(bin),
+                click: (e) => {
+                  setSelectedBinData(bin);
+                  if (onBinClick) onBinClick(bin);
+                  if (e && e.target && typeof e.target.openPopup === 'function') {
+                    e.target.openPopup();
+                  }
+                },
               }}
             >
-              <Popup>
-                <div className="p-2 min-w-[260px] font-sans">
+              <Popup autoPan={true} autoPanPadding={[20, 20]} maxHeight={380}>
+                <div className="p-2 min-w-[270px] max-w-[320px] font-sans">
                   {/* Bin Header */}
                   <div className="flex items-center justify-between border-b border-slate-700/80 pb-2 mb-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-sm font-black text-white">{bin.bin_code}</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-950/80 text-purple-300 border border-purple-700/60">
-                        All-in-One AI Bin
+                        Smart Dustbin Station
                       </span>
                     </div>
                     <span
@@ -691,11 +712,14 @@ export default function LeafletMap({
                           : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                       }`}
                     >
-                      {bin.status}
+                      {bin.status || (bin.current_fill_percentage >= 91 ? 'Critical' : 'Normal')}
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-300 font-medium mb-1.5">{bin.location_name}</p>
+                  <p className="text-xs text-slate-200 font-medium mb-1">{bin.location_name}</p>
+                  <p className="text-[10px] text-slate-400 font-mono mb-2">
+                    📍 {bin.latitude.toFixed(4)}, {bin.longitude.toFixed(4)} • {bin.ward || 'Ward 101'}
+                  </p>
 
                   {/* Real-World Distance from User */}
                   {userDistKm != null && (
@@ -711,7 +735,7 @@ export default function LeafletMap({
                   {/* Fill Level Progress */}
                   <div className="mb-2">
                     <div className="flex justify-between text-xs font-bold mb-1">
-                      <span className="text-slate-400">Total Fill Level:</span>
+                      <span className="text-slate-400">Total Station Fill Level:</span>
                       <span
                         className={
                           bin.current_fill_percentage >= 91
@@ -721,7 +745,7 @@ export default function LeafletMap({
                             : 'text-emerald-400'
                         }
                       >
-                        {bin.current_fill_percentage}%
+                        {Math.round(bin.current_fill_percentage || 0)}% Full
                       </span>
                     </div>
                     <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
@@ -733,8 +757,38 @@ export default function LeafletMap({
                             ? 'bg-amber-500'
                             : 'bg-emerald-500'
                         }`}
-                        style={{ width: `${Math.min(100, bin.current_fill_percentage)}%` }}
+                        style={{ width: `${Math.min(100, Math.round(bin.current_fill_percentage || 0))}%` }}
                       />
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-1">
+                      <span>Lid Clearance: {Math.max(0, ((bin.capacity || 100) * (1 - (bin.current_fill_percentage || 0) / 100))).toFixed(0)}cm</span>
+                      <span>Capacity: {bin.capacity || 100}L</span>
+                    </div>
+                  </div>
+
+                  {/* 4-Stream Segregated Chambers Breakdown */}
+                  <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 mb-2 space-y-1.5">
+                    <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400">
+                      <span>4-Chamber Breakdown:</span>
+                      <span className="text-purple-300 font-mono text-[9px]">Segregated</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 text-[10px]">
+                      <div className="flex items-center justify-between p-1 bg-slate-950/60 rounded border border-slate-800/80">
+                        <span className="text-emerald-400 font-medium">🍏 Wet/Organic</span>
+                        <span className="font-mono text-slate-200">{Math.min(100, Math.round((bin.current_fill_percentage || 0) * 0.95))}%</span>
+                      </div>
+                      <div className="flex items-center justify-between p-1 bg-slate-950/60 rounded border border-slate-800/80">
+                        <span className="text-amber-400 font-medium">📦 Dry/Paper</span>
+                        <span className="font-mono text-slate-200">{Math.min(100, Math.round((bin.current_fill_percentage || 0) * 0.70))}%</span>
+                      </div>
+                      <div className="flex items-center justify-between p-1 bg-slate-950/60 rounded border border-slate-800/80">
+                        <span className="text-blue-400 font-medium">🥤 Plastic</span>
+                        <span className="font-mono text-slate-200">{Math.min(100, Math.round((bin.current_fill_percentage || 0) * 1.05))}%</span>
+                      </div>
+                      <div className="flex items-center justify-between p-1 bg-slate-950/60 rounded border border-slate-800/80">
+                        <span className="text-indigo-400 font-medium">⚙️ Metal/Glass</span>
+                        <span className="font-mono text-slate-200">{Math.min(100, Math.round((bin.current_fill_percentage || 0) * 0.40))}%</span>
+                      </div>
                     </div>
                   </div>
 
@@ -745,7 +799,7 @@ export default function LeafletMap({
                         <BatteryCharging className="w-3 h-3 text-emerald-400" />
                         <span>Battery</span>
                       </span>
-                      <span className="font-bold text-slate-200">{bin.battery_level_pct || 92}% Solar</span>
+                      <span className="font-bold text-slate-200">{bin.battery_level_pct || bin.battery_level || 92}% Solar</span>
                     </div>
                     <div className="p-1 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between text-slate-400">
                       <span className="flex items-center gap-1">
@@ -753,26 +807,6 @@ export default function LeafletMap({
                         <span>Odor/Gas</span>
                       </span>
                       <span className="font-bold text-slate-200">{bin.gas_level_ppm || 24} ppm</span>
-                    </div>
-                  </div>
-
-                  {/* 6-Stream Chambers Mini Bar */}
-                  <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 mb-2">
-                    <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400 mb-1">
-                      <span>Internal Chambers:</span>
-                      <span className="text-emerald-400 font-bold">Auto-Sorted</span>
-                    </div>
-                    <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-slate-950 gap-0.5">
-                      <div className="h-full bg-blue-500" style={{ width: '28%' }} title="Plastic" />
-                      <div className="h-full bg-emerald-500" style={{ width: '25%' }} title="Organic" />
-                      <div className="h-full bg-amber-500" style={{ width: '18%' }} title="Paper" />
-                      <div className="h-full bg-teal-500" style={{ width: '14%' }} title="Glass" />
-                      <div className="h-full bg-indigo-500" style={{ width: '10%' }} title="Metal" />
-                      <div className="h-full bg-yellow-500" style={{ width: '5%' }} title="E-Waste" />
-                    </div>
-                    <div className="flex items-center justify-between text-[9px] text-slate-400 mt-1 font-mono">
-                      <span>🍏 🥤 📦 🍾 ⚙️ ⚡</span>
-                      <span className="text-purple-300">All Streams Accepted</span>
                     </div>
                   </div>
 
@@ -816,7 +850,7 @@ export default function LeafletMap({
                       onClick={() => onBinClick(bin)}
                       className="mt-1.5 w-full py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1 border border-slate-700 active:scale-95"
                     >
-                      <span>Deposit & Inspect Multi-Chambers →</span>
+                      <span>Inspect Bin Data & Chambers →</span>
                     </button>
                   )}
                 </div>
@@ -855,6 +889,178 @@ export default function LeafletMap({
           </Marker>
         )}
       </MapContainer>
+
+      {/* Floating Smart Bin Telemetry & Chamber Data HUD */}
+      {selectedBinData && (
+        <div className="absolute bottom-3 left-3 right-3 sm:left-auto sm:right-3 sm:w-96 z-[1000] pointer-events-auto animate-in slide-in-from-bottom-4 duration-200">
+          <div className="bg-slate-950/95 backdrop-blur-xl border border-slate-700/90 rounded-2xl p-4 shadow-2xl text-white space-y-3">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-sm shrink-0">
+                  🗑️
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-mono font-black text-sm text-white">{selectedBinData.bin_code}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-900/60 text-purple-300 border border-purple-700/60">
+                      Smart Dustbin
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 font-medium truncate max-w-[220px]">
+                    {selectedBinData.location_name}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                  (selectedBinData.current_fill_percentage || 0) >= 91
+                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                    : (selectedBinData.current_fill_percentage || 0) >= 76
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                }`}>
+                  {selectedBinData.status || ((selectedBinData.current_fill_percentage || 0) >= 91 ? 'Critical' : 'Normal')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBinData(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                  title="Close Bin Data"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Total Fill & Distance to Lid */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="text-slate-400">Total Station Fill:</span>
+                <span className={
+                  (selectedBinData.current_fill_percentage || 0) >= 91
+                    ? 'text-rose-400'
+                    : (selectedBinData.current_fill_percentage || 0) >= 76
+                    ? 'text-amber-400'
+                    : 'text-emerald-400'
+                }>
+                  {Math.round(selectedBinData.current_fill_percentage || 0)}% Full
+                </span>
+              </div>
+              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    (selectedBinData.current_fill_percentage || 0) >= 91
+                      ? 'bg-rose-500'
+                      : (selectedBinData.current_fill_percentage || 0) >= 76
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.round(selectedBinData.current_fill_percentage || 0))}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                <span>Clearance: {Math.max(0, ((selectedBinData.capacity || 100) * (1 - (selectedBinData.current_fill_percentage || 0) / 100))).toFixed(0)}cm to lid</span>
+                <span>Cap: {selectedBinData.capacity || 100}L</span>
+              </div>
+            </div>
+
+            {/* 4-Chamber Breakdown */}
+            <div className="bg-slate-900/90 rounded-xl p-2.5 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-bold text-slate-300">
+                <span>Internal 4-Chamber Segregation:</span>
+                <span className="text-purple-300 font-mono text-[9px]">Multi-Stream</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                <div className="p-1.5 rounded-lg bg-emerald-950/40 border border-emerald-800/40 flex items-center justify-between">
+                  <span className="flex items-center gap-1 font-semibold text-emerald-300">
+                    <span>🍏</span> Wet/Organic
+                  </span>
+                  <span className="font-mono font-bold text-emerald-400">
+                    {Math.min(100, Math.round((selectedBinData.current_fill_percentage || 0) * 0.95))}%
+                  </span>
+                </div>
+                <div className="p-1.5 rounded-lg bg-amber-950/40 border border-amber-800/40 flex items-center justify-between">
+                  <span className="flex items-center gap-1 font-semibold text-amber-300">
+                    <span>📦</span> Dry/Paper
+                  </span>
+                  <span className="font-mono font-bold text-amber-400">
+                    {Math.min(100, Math.round((selectedBinData.current_fill_percentage || 0) * 0.70))}%
+                  </span>
+                </div>
+                <div className="p-1.5 rounded-lg bg-blue-950/40 border border-blue-800/40 flex items-center justify-between">
+                  <span className="flex items-center gap-1 font-semibold text-blue-300">
+                    <span>🥤</span> Plastic
+                  </span>
+                  <span className="font-mono font-bold text-blue-400">
+                    {Math.min(100, Math.round((selectedBinData.current_fill_percentage || 0) * 1.05))}%
+                  </span>
+                </div>
+                <div className="p-1.5 rounded-lg bg-indigo-950/40 border border-indigo-800/40 flex items-center justify-between">
+                  <span className="flex items-center gap-1 font-semibold text-indigo-300">
+                    <span>⚙️</span> Metal/Glass
+                  </span>
+                  <span className="font-mono font-bold text-indigo-400">
+                    {Math.min(100, Math.round((selectedBinData.current_fill_percentage || 0) * 0.40))}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* IoT Telemetry Bar */}
+            <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+              <div className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                <span className="text-slate-400 block text-[9px]">Battery</span>
+                <span className="font-bold text-emerald-400 font-mono">
+                  ⚡ {selectedBinData.battery_level_pct || selectedBinData.battery_level || 92}%
+                </span>
+              </div>
+              <div className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                <span className="text-slate-400 block text-[9px]">Odor / Gas</span>
+                <span className="font-bold text-amber-400 font-mono">
+                  💨 {selectedBinData.gas_level_ppm || 24} ppm
+                </span>
+              </div>
+              <div className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                <span className="text-slate-400 block text-[9px]">GPS Coordinates</span>
+                <span className="font-mono font-bold text-blue-400 truncate block text-[9px]">
+                  {selectedBinData.latitude.toFixed(4)}, {selectedBinData.longitude.toFixed(4)}
+                </span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 pt-1">
+              <a
+                href={`https://www.google.com/maps?q=${selectedBinData.latitude},${selectedBinData.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5 border border-slate-700 active:scale-95"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
+                <span>Google Maps ↗</span>
+              </a>
+
+              {onDispatchBin && (
+                <button
+                  type="button"
+                  onClick={() => onDispatchBin(selectedBinData)}
+                  disabled={isDispatching}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-60 ${
+                    isDispatching && dispatchTargetBin?.bin_code === selectedBinData.bin_code
+                      ? 'bg-amber-500 text-slate-950 animate-pulse font-bold'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/40'
+                  }`}
+                >
+                  <span>🚚</span>
+                  <span>{isDispatching && dispatchTargetBin?.bin_code === selectedBinData.bin_code ? 'En Route...' : 'Dispatch Truck'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
