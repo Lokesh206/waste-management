@@ -266,21 +266,24 @@ export default function LeafletMap({
     };
   }, [routeStops]);
 
-  // Map API Key & Provider configuration
-  const [showKeyModal, setShowKeyModal] = useState(false);
-  const [customKey, setCustomKey] = useState(() => {
-    return (
-      (typeof window !== 'undefined' ? localStorage.getItem('swms_map_api_key') : '') ||
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAP_API_KEY) ||
-      ''
-    );
-  });
-  const [keyInput, setKeyInput] = useState(customKey);
+  // Map Basemap Provider configuration (100% Free, Keyless, Watermark-Free)
+  const [showLayersModal, setShowLayersModal] = useState(false);
   const [mapProvider, setMapProvider] = useState(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('swms_map_provider') : null;
-    if (saved) return saved;
-    return 'carto';
+    if (saved && saved !== 'carto' && saved !== 'dark') return saved;
+    return 'esri';
   });
+
+  // Automatically migrate legacy 'carto' or 'dark' setting to 'esri'
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('swms_map_provider');
+      if (saved === 'carto' || saved === 'dark') {
+        localStorage.setItem('swms_map_provider', 'esri');
+        setMapProvider('esri');
+      }
+    }
+  }, []);
 
   // Determine active bins: if caller explicitly supplied empty bins and disabled fallback or selectedLocation is active, do not force Bangalore bins
   const activeBins =
@@ -401,169 +404,115 @@ export default function LeafletMap({
           </button>
 
           <button
-            onClick={() => setShowKeyModal(!showKeyModal)}
-            className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 ${
-              customKey
-                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-600/60 hover:bg-emerald-900/80'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-            }`}
-            title="Configure Map API Key & Tile Layer"
+            onClick={() => setShowLayersModal(!showLayersModal)}
+            className="px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 shadow-sm"
+            title="Switch Map Basemap Layer (100% Free, Zero Key, No Watermark)"
           >
-            <Key className={`w-3.5 h-3.5 ${customKey ? 'text-emerald-400' : 'text-amber-400'}`} />
-            <span>{customKey ? 'API Key Active' : 'Map Key'}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950/60 font-mono text-slate-400 uppercase">
+            <Layers className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Map Layers</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950/60 font-mono text-emerald-400 uppercase">
               {mapProvider}
             </span>
           </button>
         </div>
 
-        {/* API Key & Tile Provider Configuration Modal */}
-        {showKeyModal && (
+        {/* 100% Free, Keyless Basemap Selector Modal */}
+        {showLayersModal && (
           <div className="w-80 p-4 rounded-2xl bg-slate-900/95 backdrop-blur-xl text-white shadow-2xl border border-slate-700/80 animate-in fade-in slide-in-from-top-2 text-xs">
             <div className="flex items-center justify-between pb-2 border-b border-slate-700/80 mb-3">
               <div className="flex items-center gap-2">
-                <Key className="w-4 h-4 text-amber-400" />
-                <span className="font-bold text-sm">Map API Key & Tiles</span>
+                <Layers className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold text-sm">Select Map Basemap</span>
               </div>
               <button
-                onClick={() => setShowKeyModal(false)}
+                onClick={() => setShowLayersModal(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1.5">
-                  Select Basemap Layer:
-                </label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMapProvider('carto');
-                      if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'carto');
-                    }}
-                    className={`p-2 rounded-xl border text-left flex flex-col gap-0.5 transition ${
-                      mapProvider === 'carto'
-                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-200'
-                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span className="font-bold text-[10px] text-white flex items-center gap-1">
-                      <span>🚀</span> CARTO
-                    </span>
-                    <span className="text-[8px] text-emerald-400 font-semibold">&lt;100ms Fast</span>
-                  </button>
+            <div className="space-y-2">
+              <p className="text-[11px] text-slate-400">
+                All basemaps are 100% free, fast, keyless, and watermark-free.
+              </p>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMapProvider('dark');
-                      if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'dark');
-                    }}
-                    className={`p-2 rounded-xl border text-left flex flex-col gap-0.5 transition ${
-                      mapProvider === 'dark'
-                        ? 'bg-purple-600/20 border-purple-500 text-purple-200'
-                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span className="font-bold text-[10px] text-white flex items-center gap-1">
-                      <span>🌌</span> Dark
-                    </span>
-                    <span className="text-[8px] text-purple-300 font-semibold">Cyberpunk</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMapProvider('osm');
-                      if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'osm');
-                    }}
-                    className={`p-2 rounded-xl border text-left flex flex-col gap-0.5 transition ${
-                      mapProvider === 'osm'
-                        ? 'bg-blue-600/20 border-blue-500 text-blue-200'
-                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span className="font-bold text-[10px] text-white flex items-center gap-1">
-                      <span>🌍</span> OSM
-                    </span>
-                    <span className="text-[8px] text-blue-300 font-semibold">Standard</span>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1">
-                  CARTO / Custom Map API Key:
-                </label>
-                <input
-                  type="text"
-                  value={keyInput}
-                  onChange={(e) => setKeyInput(e.target.value)}
-                  placeholder="Paste Map API Key here..."
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Get a free CARTO key at{' '}
-                  <a
-                    href="https://carto.com/basemaps/apikey"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-400 hover:underline"
-                  >
-                    carto.com/basemaps/apikey
-                  </a>
-                  . OpenStreetMap works out of the box with zero keys.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => {
-                    const cleanKey = keyInput.trim();
-                    setCustomKey(cleanKey);
-                    if (typeof window !== 'undefined') {
-                      if (cleanKey) {
-                        localStorage.setItem('swms_map_api_key', cleanKey);
-                        localStorage.setItem('swms_map_provider', 'carto');
-                        setMapProvider('carto');
-                      } else {
-                        localStorage.removeItem('swms_map_api_key');
-                        localStorage.setItem('swms_map_provider', 'osm');
-                        setMapProvider('osm');
-                      }
-                    }
-                    setShowKeyModal(false);
+                    setMapProvider('esri');
+                    if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'esri');
+                    setShowLayersModal(false);
                   }}
-                  className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-md"
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition ${
+                    mapProvider === 'esri'
+                      ? 'bg-emerald-600/20 border-emerald-500 text-emerald-200'
+                      : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                  }`}
                 >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Save & Apply</span>
+                  <span className="font-bold text-[11px] text-white flex items-center gap-1.5">
+                    <span>🏙️</span> ESRI Streets
+                  </span>
+                  <span className="text-[9px] text-emerald-400 font-semibold">Recommended • HD</span>
                 </button>
 
-                {customKey && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setKeyInput('');
-                      setCustomKey('');
-                      if (typeof window !== 'undefined') {
-                        localStorage.removeItem('swms_map_api_key');
-                        localStorage.setItem('swms_map_provider', 'osm');
-                        setMapProvider('osm');
-                      }
-                      setShowKeyModal(false);
-                    }}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 font-bold text-xs transition"
-                    title="Remove saved API key and reset to OpenStreetMap"
-                  >
-                    Clear
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMapProvider('osm');
+                    if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'osm');
+                    setShowLayersModal(false);
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition ${
+                    mapProvider === 'osm'
+                      ? 'bg-blue-600/20 border-blue-500 text-blue-200'
+                      : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="font-bold text-[11px] text-white flex items-center gap-1.5">
+                    <span>🌍</span> OpenStreetMap
+                  </span>
+                  <span className="text-[9px] text-blue-300 font-semibold">Standard OSM</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMapProvider('hot');
+                    if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'hot');
+                    setShowLayersModal(false);
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition ${
+                    mapProvider === 'hot'
+                      ? 'bg-amber-600/20 border-amber-500 text-amber-200'
+                      : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="font-bold text-[11px] text-white flex items-center gap-1.5">
+                    <span>🚚</span> Municipal HOT
+                  </span>
+                  <span className="text-[9px] text-amber-400 font-semibold">High-Contrast Roads</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMapProvider('satellite');
+                    if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'satellite');
+                    setShowLayersModal(false);
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition ${
+                    mapProvider === 'satellite'
+                      ? 'bg-purple-600/20 border-purple-500 text-purple-200'
+                      : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="font-bold text-[11px] text-white flex items-center gap-1.5">
+                    <span>🛰️</span> Aerial Satellite
+                  </span>
+                  <span className="text-[9px] text-purple-300 font-semibold">True Imagery</span>
+                </button>
               </div>
             </div>
           </div>
@@ -586,31 +535,34 @@ export default function LeafletMap({
         <AutoFitBounds bins={activeBins} enabled={shouldAutoFit} />
         {onLocationSelect && <LocationPicker onLocationSelect={onLocationSelect} />}
 
-        {/* Dynamic Tile Layer with Edge CDN Multi-Subdomain Acceleration */}
-        {mapProvider === 'dark' ? (
-          <TileLayer
-            key="carto-dark-tiles"
-            attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            subdomains="abcd"
-            maxZoom={20}
-          />
-        ) : mapProvider === 'osm' ? (
+        {/* 100% Free, Keyless, Watermark-Free High Performance Basemaps */}
+        {mapProvider === 'osm' ? (
           <TileLayer
             key="osm-tiles-clean"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             maxZoom={19}
           />
+        ) : mapProvider === 'hot' ? (
+          <TileLayer
+            key="osm-hot-tiles"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/">HOT</a>'
+            url="https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png"
+            maxZoom={19}
+          />
+        ) : mapProvider === 'satellite' ? (
+          <TileLayer
+            key="esri-satellite-tiles"
+            attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={19}
+          />
         ) : (
           <TileLayer
-            key={`carto-tiles-${customKey || 'none'}`}
-            attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url={`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${
-              customKey ? `?key=${customKey}` : ''
-            }`}
-            subdomains="abcd"
-            maxZoom={20}
+            key="esri-street-tiles"
+            attribution='Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, METI, TomTom'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={19}
           />
         )}
 
