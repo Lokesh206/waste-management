@@ -29,6 +29,7 @@ import {
   User,
   Activity,
   CheckCircle2,
+  Mic,
 } from 'lucide-react';
 
 const ROLE_STYLES = {
@@ -250,8 +251,22 @@ export default function Navbar({ toggleSidebar, isSidebarOpen }) {
             )}
           </div>
 
-          {/* Right: Notifications & Profile */}
-          <div className="flex items-center gap-3">
+          {/* Right: Voice Assistant & Notifications & Profile */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Voice Assistant Mic Trigger Button */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('toggle-voice-assistant'))}
+              className="p-2 rounded-xl text-slate-300 hover:text-emerald-400 hover:bg-slate-800 transition relative group"
+              title="Voice Command Assistant (Click & Speak)"
+              aria-label="Toggle Voice Command Assistant"
+            >
+              <Mic className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
+              <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            </button>
+
             {/* Notification Bell */}
             <div className="relative">
               <button

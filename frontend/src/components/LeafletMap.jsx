@@ -279,7 +279,7 @@ export default function LeafletMap({
   const [mapProvider, setMapProvider] = useState(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('swms_map_provider') : null;
     if (saved) return saved;
-    return customKey ? 'carto' : 'osm';
+    return 'carto';
   });
 
   // Determine active bins: if caller explicitly supplied empty bins and disabled fallback or selectedLocation is active, do not force Bangalore bins
@@ -438,41 +438,59 @@ export default function LeafletMap({
                 <label className="text-[11px] font-bold text-slate-400 block mb-1.5">
                   Select Basemap Layer:
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMapProvider('osm');
-                      if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'osm');
-                    }}
-                    className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition ${
-                      mapProvider === 'osm'
-                        ? 'bg-blue-600/20 border-blue-500 text-blue-200'
-                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span className="font-bold text-[11px] text-white flex items-center gap-1">
-                      <span>🌍</span> OpenStreetMap
-                    </span>
-                    <span className="text-[9px] text-emerald-400 font-semibold">✓ Free (Zero Key)</span>
-                  </button>
-
+                <div className="grid grid-cols-3 gap-1.5">
                   <button
                     type="button"
                     onClick={() => {
                       setMapProvider('carto');
                       if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'carto');
                     }}
-                    className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 transition ${
+                    className={`p-2 rounded-xl border text-left flex flex-col gap-0.5 transition ${
                       mapProvider === 'carto'
+                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-200'
+                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="font-bold text-[10px] text-white flex items-center gap-1">
+                      <span>🚀</span> CARTO
+                    </span>
+                    <span className="text-[8px] text-emerald-400 font-semibold">&lt;100ms Fast</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMapProvider('dark');
+                      if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'dark');
+                    }}
+                    className={`p-2 rounded-xl border text-left flex flex-col gap-0.5 transition ${
+                      mapProvider === 'dark'
                         ? 'bg-purple-600/20 border-purple-500 text-purple-200'
                         : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
                     }`}
                   >
-                    <span className="font-bold text-[11px] text-white flex items-center gap-1">
-                      <span>🛰️</span> CARTO HD
+                    <span className="font-bold text-[10px] text-white flex items-center gap-1">
+                      <span>🌌</span> Dark
                     </span>
-                    <span className="text-[9px] text-amber-400 font-semibold">Needs API Key</span>
+                    <span className="text-[8px] text-purple-300 font-semibold">Cyberpunk</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMapProvider('osm');
+                      if (typeof window !== 'undefined') localStorage.setItem('swms_map_provider', 'osm');
+                    }}
+                    className={`p-2 rounded-xl border text-left flex flex-col gap-0.5 transition ${
+                      mapProvider === 'osm'
+                        ? 'bg-blue-600/20 border-blue-500 text-blue-200'
+                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="font-bold text-[10px] text-white flex items-center gap-1">
+                      <span>🌍</span> OSM
+                    </span>
+                    <span className="text-[8px] text-blue-300 font-semibold">Standard</span>
                   </button>
                 </div>
               </div>
@@ -568,22 +586,31 @@ export default function LeafletMap({
         <AutoFitBounds bins={activeBins} enabled={shouldAutoFit} />
         {onLocationSelect && <LocationPicker onLocationSelect={onLocationSelect} />}
 
-        {/* Dynamic Tile Layer: OpenStreetMap (Zero Key, No Watermark) or CARTO HD (with API Key) */}
-        {mapProvider === 'carto' ? (
+        {/* Dynamic Tile Layer with Edge CDN Multi-Subdomain Acceleration */}
+        {mapProvider === 'dark' ? (
+          <TileLayer
+            key="carto-dark-tiles"
+            attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            subdomains="abcd"
+            maxZoom={20}
+          />
+        ) : mapProvider === 'osm' ? (
+          <TileLayer
+            key="osm-tiles-clean"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxZoom={19}
+          />
+        ) : (
           <TileLayer
             key={`carto-tiles-${customKey || 'none'}`}
             attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url={`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${
               customKey ? `?key=${customKey}` : ''
             }`}
-            maxZoom={19}
-          />
-        ) : (
-          <TileLayer
-            key="osm-tiles-clean"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            maxZoom={19}
+            subdomains="abcd"
+            maxZoom={20}
           />
         )}
 

@@ -5,6 +5,7 @@ import { NotificationProvider } from './context/NotificationContext';
 
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
+import VoiceAssistant from './components/VoiceAssistant';
 
 // Public Pages
 import Home from './pages/Home';
@@ -239,6 +240,9 @@ function MainLayout() {
           </Routes>
         </main>
       </div>
+
+      {/* Global Interactive Voice Control Assistant */}
+      <VoiceAssistant />
     </div>
   );
 }

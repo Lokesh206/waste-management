@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const { determineStatus } = require('../services/binService');
 const { predictBinFill } = require('../services/predictionBridge');
+const { emitEvent } = require('../websocket/socketManager');
 const logger = require('../utils/logger');
 
 const prisma = new PrismaClient();
@@ -258,6 +259,9 @@ async function updateBin(req, res) {
       where: { id },
       data: updateData,
     });
+
+    // Broadcast live location/details update over WebSockets
+    emitEvent('bin:update', updated);
 
     return res.status(200).json({
       success: true,
