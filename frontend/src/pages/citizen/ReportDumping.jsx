@@ -15,6 +15,8 @@ import {
   FileText,
   Clock,
   Building,
+  Camera,
+  ExternalLink,
 } from 'lucide-react';
 import {
   getCurrentUserLocation,
@@ -183,16 +185,58 @@ export default function ReportDumping() {
       )}
 
       {success ? (
-        <div className="bg-white rounded-3xl p-8 border border-emerald-200 text-center space-y-4 shadow-sm animate-in zoom-in-95">
+        <div className="bg-white rounded-3xl p-8 border border-emerald-200 text-center space-y-5 shadow-sm animate-in zoom-in-95">
           <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center">
             <CheckCircle2 className="w-8 h-8" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900">Incident Dispatched to Municipal Authorities!</h2>
-          <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-            Your complaint <span className="font-bold text-slate-900">#{success.id}</span> has been geotagged at{' '}
-            <span className="font-mono text-emerald-700 font-bold">{formData.latitude.toFixed(4)}, {formData.longitude.toFixed(4)}</span> and routed to the ward sanitation supervisor.
-          </p>
-          <div className="pt-4 flex justify-center gap-3">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">Incident Dispatched to Municipal Authorities!</h2>
+            <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed mt-1">
+              Your complaint <span className="font-bold text-slate-900">#{success.id}</span> has been geotagged and routed to the ward sanitation supervisor.
+            </p>
+          </div>
+
+          {/* Photo & GPS Geotag Stored Card */}
+          <div className="max-w-md mx-auto rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50 text-left">
+            {preview ? (
+              <div className="relative h-48 w-full bg-slate-900 overflow-hidden">
+                <img src={preview} alt="Submitted Evidence" className="w-full h-full object-cover" />
+                <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-emerald-600/90 text-white text-[10px] font-bold flex items-center gap-1">
+                  <span>✓ Photo Uploaded</span>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="p-3.5 space-y-2">
+              <div className="flex items-center justify-between text-xs font-mono">
+                <span className="text-slate-500 font-sans font-semibold">Incident Coordinates:</span>
+                <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                  📍 {formData.latitude.toFixed(5)}, {formData.longitude.toFixed(5)}
+                </span>
+              </div>
+
+              {formData.address && (
+                <div className="text-[11px] text-slate-600 flex items-start gap-1">
+                  <span className="text-slate-400">Street:</span>
+                  <span className="font-medium text-slate-800">{formData.address}</span>
+                </div>
+              )}
+
+              <div className="pt-1 flex justify-end">
+                <a
+                  href={`https://www.google.com/maps?q=${formData.latitude},${formData.longitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-700 font-bold inline-flex items-center gap-1"
+                >
+                  <span>Open in Google Maps</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-center gap-3">
             <button
               onClick={() => {
                 setSuccess(null);
@@ -313,19 +357,46 @@ export default function ReportDumping() {
               />
             </div>
 
-            {/* Photo Evidence Upload */}
+            {/* Photo Evidence & Geotag Upload */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Photo Evidence (Optional)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">Photo Evidence with GPS Geotag</label>
+                <span className="text-[10px] text-slate-400 font-medium">Camera or Gallery</span>
+              </div>
               {!preview ? (
-                <label className="border-2 border-dashed border-slate-200 hover:border-rose-500 rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-50/50">
-                  <UploadCloud className="w-7 h-7 text-slate-400 mb-1" />
-                  <span className="text-xs font-bold text-slate-700">Upload Geotagged Photo</span>
-                  <span className="text-[10px] text-slate-400">JPG, PNG up to 5MB</span>
-                  <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="border-2 border-dashed border-rose-200 hover:border-rose-500 bg-rose-50/40 hover:bg-rose-50/80 rounded-xl p-3.5 flex flex-col items-center justify-center text-center cursor-pointer transition shadow-xs">
+                    <Camera className="w-5 h-5 text-rose-500 mb-1" />
+                    <span className="text-xs font-bold text-slate-800">Take Photo</span>
+                    <span className="text-[10px] text-slate-400">Direct camera capture</span>
+                    <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} className="hidden" />
+                  </label>
+                  <label className="border-2 border-dashed border-slate-200 hover:border-slate-400 bg-slate-50/60 hover:bg-slate-50 rounded-xl p-3.5 flex flex-col items-center justify-center text-center cursor-pointer transition shadow-xs">
+                    <UploadCloud className="w-5 h-5 text-slate-500 mb-1" />
+                    <span className="text-xs font-bold text-slate-800">Browse Files</span>
+                    <span className="text-[10px] text-slate-400">JPG, PNG up to 5MB</span>
+                    <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                  </label>
+                </div>
               ) : (
-                <div className="relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200 h-32">
-                  <img src={preview} alt="Evidence Preview" className="w-full h-full object-cover" />
+                <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-200 shadow-md">
+                  <img src={preview} alt="Evidence Preview" className="w-full h-44 object-cover" />
+                  {/* Geotag Watermark Overlay */}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 via-slate-950/70 to-transparent p-3 text-white">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-400 mb-0.5">
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>GEOTAGGED EVIDENCE ATTACHED</span>
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-200 flex items-center justify-between">
+                      <span>📍 {formData.latitude.toFixed(5)}, {formData.longitude.toFixed(5)}</span>
+                      <span>{new Date().toLocaleTimeString()}</span>
+                    </div>
+                    {formData.address && (
+                      <p className="text-[10px] text-slate-300 truncate mt-0.5 font-sans">
+                        {formData.address}
+                      </p>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => {

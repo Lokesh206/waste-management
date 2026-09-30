@@ -8,6 +8,9 @@ import {
   X,
   MapPin,
   RefreshCw,
+  Camera,
+  ExternalLink,
+  ImageIcon,
 } from 'lucide-react';
 
 export default function ComplaintsManager() {
@@ -97,6 +100,7 @@ export default function ComplaintsManager() {
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
               <tr>
                 <th className="py-3 px-4">Report ID</th>
+                <th className="py-3 px-4">Evidence Photo</th>
                 <th className="py-3 px-4">Citizen</th>
                 <th className="py-3 px-4">Incident Title</th>
                 <th className="py-3 px-4">Status</th>
@@ -109,13 +113,40 @@ export default function ComplaintsManager() {
               {complaints.map((c) => (
                 <tr key={c.id} className="hover:bg-slate-50/60 transition">
                   <td className="py-3.5 px-4 font-bold text-slate-900">#CMP-{c.id}</td>
-                  <td className="py-3.5 px-4 text-slate-700">{c.user?.name || 'Citizen'}</td>
+                  <td className="py-3.5 px-4">
+                    {c.image_path ? (
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border border-slate-200 shadow-xs bg-slate-100">
+                        <img
+                          src={getImageUrl(c.image_path)}
+                          alt="Evidence thumbnail"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-medium px-2 py-1 rounded-md bg-slate-50 border border-slate-100">
+                        <ImageIcon className="w-3 h-3 text-slate-300" />
+                        No Photo
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3.5 px-4 text-slate-700 font-medium">{c.user?.name || 'Citizen'}</td>
                   <td className="py-3.5 px-4 font-semibold text-slate-800">{c.title}</td>
                   <td className="py-3.5 px-4">
                     <StatusBadge status={c.status} />
                   </td>
-                  <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
-                    {c.latitude.toFixed(4)}, {c.longitude.toFixed(4)}
+                  <td className="py-3.5 px-4">
+                    <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-700">
+                      <span>📍 {c.latitude.toFixed(4)}, {c.longitude.toFixed(4)}</span>
+                      <a
+                        href={`https://www.google.com/maps?q=${c.latitude},${c.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open in Google Maps"
+                        className="text-blue-600 hover:text-blue-800 p-0.5 rounded hover:bg-blue-50 transition"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
                   </td>
                   <td className="py-3.5 px-4 text-slate-500">
                     {new Date(c.created_at).toLocaleDateString()}
@@ -127,7 +158,7 @@ export default function ComplaintsManager() {
                         setStatus(c.status === 'Pending' ? 'Under Review' : 'Resolved');
                         setAdminNotes(c.admin_notes || '');
                       }}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition inline-flex items-center gap-1.5"
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition inline-flex items-center gap-1.5 shadow-xs"
                     >
                       <Eye className="w-3.5 h-3.5" />
                       <span>Review</span>
@@ -157,21 +188,59 @@ export default function ComplaintsManager() {
             <div className="space-y-3 text-xs">
               <div>
                 <span className="font-bold text-slate-700 block">Description:</span>
-                <p className="text-slate-600 mt-1 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <p className="text-slate-600 mt-1 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-line">
                   {selectedComplaint.description}
                 </p>
               </div>
 
-              {selectedComplaint.image_path && (
+              {/* Photo Evidence Card */}
+              {selectedComplaint.image_path ? (
                 <div>
-                  <span className="font-bold text-slate-700 block mb-1">Evidence Photo:</span>
-                  <div className="h-44 rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                  <span className="font-bold text-slate-700 block mb-1">Evidence Photo & Geotag:</span>
+                  <div className="relative rounded-2xl overflow-hidden bg-slate-900 border border-slate-200 shadow-sm">
                     <img
                       src={getImageUrl(selectedComplaint.image_path)}
-                      alt="Evidence"
-                      className="w-full h-full object-cover"
+                      alt="Incident Evidence"
+                      className="w-full h-48 object-cover"
                     />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 via-slate-950/60 to-transparent p-3 text-white flex items-center justify-between">
+                      <div className="text-[11px] font-mono">
+                        <span className="text-emerald-400 font-bold block">📍 {selectedComplaint.latitude.toFixed(5)}, {selectedComplaint.longitude.toFixed(5)}</span>
+                        {selectedComplaint.address && (
+                          <span className="text-[10px] text-slate-300 font-sans truncate block max-w-[280px]">
+                            {selectedComplaint.address}
+                          </span>
+                        )}
+                      </div>
+                      <a
+                        href={`https://www.google.com/maps?q=${selectedComplaint.latitude},${selectedComplaint.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold inline-flex items-center gap-1 backdrop-blur-xs transition shrink-0"
+                      >
+                        <span>Maps</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
                   </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
+                  <div className="text-xs">
+                    <span className="text-slate-500 font-medium">GPS Location:</span>
+                    <strong className="block font-mono text-slate-800">
+                      📍 {selectedComplaint.latitude.toFixed(5)}, {selectedComplaint.longitude.toFixed(5)}
+                    </strong>
+                  </div>
+                  <a
+                    href={`https://www.google.com/maps?q=${selectedComplaint.latitude},${selectedComplaint.longitude}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs inline-flex items-center gap-1.5 transition"
+                  >
+                    <span>Open in Maps</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
                 </div>
               )}
 

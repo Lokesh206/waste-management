@@ -90,6 +90,18 @@ export default function Home() {
   const [reportSuccess, setReportSuccess] = useState(null);
   const [reportError, setReportError] = useState('');
 
+  const handleReportImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setReportImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setReportPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // Fetch Bins from Backend
   const fetchBins = async () => {
     try {
@@ -855,21 +867,54 @@ export default function Home() {
             </div>
 
             {reportSuccess ? (
-              <div className="p-6 rounded-2xl bg-emerald-950/50 border border-emerald-700/80 text-center space-y-3">
-                <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+              <div className="p-5 rounded-2xl bg-emerald-950/60 border border-emerald-700/80 text-center space-y-3">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
                 <h4 className="font-black text-white text-base">Report #{reportSuccess.id} Dispatched!</h4>
                 <p className="text-xs text-emerald-300">
                   Municipal sanitation dispatch has queued this site for field clean-up.
                 </p>
+
+                {reportPreview && (
+                  <div className="relative h-32 rounded-xl overflow-hidden border border-emerald-600/40">
+                    <img src={reportPreview} alt="Incident Photo" className="w-full h-full object-cover" />
+                    <div className="absolute bottom-1 right-1 px-2 py-0.5 bg-black/75 text-emerald-300 font-mono text-[10px] rounded">
+                      📍 {reportLocation.latitude.toFixed(4)}, {reportLocation.longitude.toFixed(4)}
+                    </div>
+                  </div>
+                )}
+
+                <div className="p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 text-[11px] font-mono flex items-center justify-between text-slate-300">
+                  <span>GPS: {reportLocation.latitude.toFixed(4)}, {reportLocation.longitude.toFixed(4)}</span>
+                  <a
+                    href={`https://www.google.com/maps?q=${reportLocation.latitude},${reportLocation.longitude}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-emerald-400 hover:underline font-bold"
+                  >
+                    Google Maps ↗
+                  </a>
+                </div>
+
                 <button
-                  onClick={() => setReportSuccess(null)}
-                  className="mt-2 px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500"
+                  onClick={() => {
+                    setReportSuccess(null);
+                    setReportImage(null);
+                    setReportPreview(null);
+                  }}
+                  className="mt-2 px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition"
                 >
                   File Another Incident
                 </button>
               </div>
             ) : (
               <form onSubmit={handleReportSubmit} className="space-y-3 text-xs">
+                {reportError && (
+                  <div className="p-2.5 bg-rose-950/60 border border-rose-800 text-rose-300 rounded-xl text-xs flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{reportError}</span>
+                  </div>
+                )}
+
                 <div>
                   <label className="block font-bold text-slate-300 mb-1">Incident Title</label>
                   <input
@@ -894,8 +939,52 @@ export default function Home() {
                   />
                 </div>
 
-                <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-[11px] font-mono flex items-center justify-between">
-                  <span>GPS Coordinates: {reportLocation.latitude.toFixed(4)}, {reportLocation.longitude.toFixed(4)}</span>
+                {/* Photo Evidence with GPS Coordinates */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-slate-300">Photo Evidence with Coordinates</label>
+                    <span className="text-[10px] text-slate-400">Optional photo</span>
+                  </div>
+                  {!reportPreview ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="border border-dashed border-rose-500/50 hover:border-rose-400 bg-rose-950/20 hover:bg-rose-950/40 rounded-xl p-2.5 flex flex-col items-center justify-center text-center cursor-pointer transition">
+                        <Camera className="w-4 h-4 text-rose-400 mb-1" />
+                        <span className="text-[11px] font-bold text-white">Camera Capture</span>
+                        <span className="text-[9px] text-slate-400">Direct camera</span>
+                        <input type="file" accept="image/*" capture="environment" onChange={handleReportImageChange} className="hidden" />
+                      </label>
+                      <label className="border border-dashed border-slate-700 hover:border-slate-500 bg-slate-900 hover:bg-slate-850 rounded-xl p-2.5 flex flex-col items-center justify-center text-center cursor-pointer transition">
+                        <UploadCloud className="w-4 h-4 text-slate-400 mb-1" />
+                        <span className="text-[11px] font-bold text-white">Upload File</span>
+                        <span className="text-[9px] text-slate-400">JPG, PNG</span>
+                        <input type="file" accept="image/*" onChange={handleReportImageChange} className="hidden" />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-700">
+                      <img src={reportPreview} alt="Evidence Preview" className="w-full h-32 object-cover" />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent p-2 text-white">
+                        <div className="text-[10px] font-mono text-emerald-300 flex items-center justify-between">
+                          <span>📍 {reportLocation.latitude.toFixed(4)}, {reportLocation.longitude.toFixed(4)}</span>
+                          <span>{new Date().toLocaleTimeString()}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReportImage(null);
+                          setReportPreview(null);
+                        }}
+                        className="absolute top-1.5 right-1.5 px-2 py-0.5 bg-black/70 hover:bg-black text-white text-[9px] font-bold rounded-md"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-2.5 bg-slate-900 rounded-xl border border-slate-800 text-[11px] font-mono flex items-center justify-between">
+                  <span>GPS: {reportLocation.latitude.toFixed(4)}, {reportLocation.longitude.toFixed(4)}</span>
                   <button
                     type="button"
                     onClick={() => setReportLocation({ latitude: 12.9716, longitude: 77.5946 })}
@@ -910,7 +999,7 @@ export default function Home() {
                   disabled={reportLoading}
                   className="w-full py-3 px-4 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-500 transition shadow-lg shadow-rose-600/30"
                 >
-                  {reportLoading ? 'Transmitting...' : 'Submit Incident Report to Municipality'}
+                  {reportLoading ? 'Transmitting Incident...' : 'Submit Incident Report to Municipality'}
                 </button>
               </form>
             )}

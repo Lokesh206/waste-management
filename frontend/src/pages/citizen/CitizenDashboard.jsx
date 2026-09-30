@@ -18,6 +18,7 @@ import {
   Shield,
   Medal,
   TrendingUp,
+  ExternalLink,
 } from 'lucide-react';
 
 import { onComplaintEvent, onBinUpdate } from '../../services/socket';
@@ -365,15 +366,46 @@ export default function CitizenDashboard() {
           ) : (
             <div className="space-y-3">
               {complaints.slice(0, 4).map((c) => (
-                <div key={c.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-900 line-clamp-1">{c.title}</p>
-                    <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      {new Date(c.created_at).toLocaleDateString()}
-                    </p>
+                <div key={c.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {c.image_path ? (
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border border-slate-200 shrink-0 bg-slate-100 shadow-xs">
+                        <img
+                          src={getImageUrl(c.image_path)}
+                          alt="Report Evidence"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0 text-rose-500">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-900 truncate">{c.title}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[11px] text-slate-500">
+                        <span className="flex items-center gap-1 font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                          📍 {c.latitude.toFixed(4)}, {c.longitude.toFixed(4)}
+                        </span>
+                        <a
+                          href={`https://www.google.com/maps?q=${c.latitude},${c.longitude}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Open coordinates in Google Maps"
+                          className="text-blue-600 hover:text-blue-800 inline-flex items-center gap-0.5"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                        <span className="flex items-center gap-1 text-slate-400">
+                          <Clock className="w-3 h-3" />
+                          {new Date(c.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <StatusBadge status={c.status} />
+                  <div className="shrink-0">
+                    <StatusBadge status={c.status} />
+                  </div>
                 </div>
               ))}
             </div>
