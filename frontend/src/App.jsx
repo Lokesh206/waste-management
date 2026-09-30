@@ -72,18 +72,18 @@ function MainLayout() {
   const isPublicHome = isRootMap || location.pathname === '/login' || location.pathname === '/register';
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950">
+    <div className={`min-h-screen flex flex-col ${isRootMap ? 'bg-slate-950' : 'bg-slate-100/70 text-slate-900'}`}>
       <Navbar
         toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         isSidebarOpen={sidebarOpen}
       />
 
-      <div className={`flex flex-1 w-full ${isRootMap ? 'max-w-full' : 'max-w-7xl mx-auto'}`}>
+      <div className={`flex flex-1 w-full ${isRootMap ? 'max-w-full' : ''}`}>
         {user && !isPublicHome && (
           <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         )}
 
-        <main className={`flex-1 overflow-y-auto ${isRootMap ? 'p-0' : 'p-4 sm:p-6 lg:p-8'}`}>
+        <main className={`flex-1 overflow-y-auto ${isRootMap ? 'p-0' : 'p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full'}`}>
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<Home />} />

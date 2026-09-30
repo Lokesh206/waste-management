@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { analyticsAPI, binsAPI, collectionsAPI, authAPI, adminAPI } from '../../services/api';
-import { getSocket, onBinUpdate, onBinCritical, onVehicleLocation, onCollectionEvent, joinRoleRoom } from '../../services/socket';
+import { getSocket, onBinUpdate, onBinCritical, onVehicleLocation, onCollectionEvent, onComplaintEvent, joinRoleRoom } from '../../services/socket';
 import MetricCard from '../../components/MetricCard';
 import StatusBadge from '../../components/StatusBadge';
 import LeafletMap from '../../components/LeafletMap';
@@ -175,6 +175,12 @@ export default function AdminDashboard() {
       fetchDashboardData();
     });
 
+    // 5. Subscribe to Real-Time Citizen Dumping Reports
+    const unsubComplaints = onComplaintEvent((complaintData) => {
+      fetchDashboardData();
+      fetchOperationalData();
+    });
+
     // Background interval polling fallback
     const interval = setInterval(fetchDashboardData, 8000);
 
@@ -184,6 +190,7 @@ export default function AdminDashboard() {
       unsubBinCritical?.();
       unsubVehicles?.();
       unsubCollections?.();
+      unsubComplaints?.();
     };
   }, []);
 

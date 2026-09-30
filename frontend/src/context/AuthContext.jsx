@@ -4,51 +4,64 @@ import { authAPI } from '../services/api';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('swms_token'));
-  const [loading, setLoading] = useState(true);
+  // Initialize user from localStorage to prevent momentary glitch logouts
+  const [user, setUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem('swms_user');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [token, setToken] = useState(() => localStorage.getItem('swms_token'));
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    async function loadUser() {
+    async function verifyUserSession() {
       if (token) {
         try {
           const res = await authAPI.getProfile();
-          if (res.data.success) {
+          if (res.data?.success) {
             setUser(res.data.user);
-          } else {
+            localStorage.setItem('swms_user', JSON.stringify(res.data.user));
+          } else if (res.status === 401) {
             logout();
           }
         } catch (err) {
-          logout();
+          // Only force logout on genuine 401 Unauthorized responses
+          if (err.response?.status === 401) {
+            logout();
+          }
         }
       }
       setLoading(false);
     }
-    loadUser();
+    verifyUserSession();
   }, [token]);
 
   const login = async (email, password) => {
     const res = await authAPI.login({ email, password });
-    if (res.data.success) {
+    if (res.data?.success) {
       localStorage.setItem('swms_token', res.data.token);
       localStorage.setItem('swms_user', JSON.stringify(res.data.user));
       setToken(res.data.token);
       setUser(res.data.user);
       return res.data.user;
     }
-    throw new Error(res.data.message || 'Login failed');
+    throw new Error(res.data?.message || 'Login failed');
   };
 
   const register = async (userData) => {
     const res = await authAPI.register(userData);
-    if (res.data.success) {
+    if (res.data?.success) {
       localStorage.setItem('swms_token', res.data.token);
       localStorage.setItem('swms_user', JSON.stringify(res.data.user));
       setToken(res.data.token);
       setUser(res.data.user);
       return res.data.user;
     }
-    throw new Error(res.data.message || 'Registration failed');
+    throw new Error(res.data?.message || 'Registration failed');
   };
 
   const logout = () => {
@@ -79,4 +92,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

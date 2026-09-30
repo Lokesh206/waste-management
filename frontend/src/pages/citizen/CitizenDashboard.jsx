@@ -20,6 +20,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
+import { onComplaintEvent, onBinUpdate } from '../../services/socket';
+
 export default function CitizenDashboard() {
   const { user } = useAuth();
   const [classifications, setClassifications] = useState([]);
@@ -27,6 +29,14 @@ export default function CitizenDashboard() {
   const [binsCount, setBinsCount] = useState(0);
   const [rewardsData, setRewardsData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [liveToast, setLiveToast] = useState('');
+
+  const refreshRewards = async () => {
+    try {
+      const rRes = await rewardsAPI.getCitizenRewards();
+      if (rRes.data?.success) setRewardsData(rRes.data);
+    } catch {}
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -48,6 +58,33 @@ export default function CitizenDashboard() {
       }
     }
     loadData();
+
+    // Real-Time Socket Subscriptions
+    const unsubComplaint = onComplaintEvent((comp) => {
+      setComplaints((prev) => {
+        const idx = prev.findIndex((c) => c.id === comp.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], ...comp };
+          return updated;
+        }
+        return [comp, ...prev];
+      });
+      setLiveToast(`📢 Complaint status updated: #${comp.id} (${comp.status})`);
+      refreshRewards();
+      setTimeout(() => setLiveToast(''), 6000);
+    });
+
+    const unsubBins = onBinUpdate(() => {
+      binsAPI.getAll().then((res) => {
+        if (res.data?.success) setBinsCount(res.data.count || res.data.bins?.length || 0);
+      }).catch(() => {});
+    });
+
+    return () => {
+      unsubComplaint?.();
+      unsubBins?.();
+    };
   }, []);
 
   const resolvedComplaints = complaints.filter((c) => c.status === 'Resolved').length;
@@ -55,6 +92,15 @@ export default function CitizenDashboard() {
 
   return (
     <div className="space-y-8">
+      {liveToast && (
+        <div className="p-3.5 bg-emerald-600 text-white rounded-2xl text-xs font-bold shadow-lg flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+            <span>{liveToast}</span>
+          </div>
+          <button onClick={() => setLiveToast('')} className="text-white hover:text-emerald-200 font-bold">✕</button>
+        </div>
+      )}
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-3xl p-6 sm:p-8 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div className="space-y-1 max-w-xl">
