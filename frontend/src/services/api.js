@@ -125,7 +125,15 @@ export const wasteAPI = {
 // Analytics & Reports APIs
 export const analyticsAPI = {
   getDashboardStats: () => api.get('/analytics/dashboard'),
-  exportReportUrl: (type) => `${API_BASE_URL}/reports/export?type=${type}`,
+  exportReportUrl: (type) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    return `${API_BASE_URL}/reports/export?type=${type}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+  },
+  downloadReport: (type) =>
+    api.get('/reports/export', {
+      params: { type },
+      responseType: 'blob',
+    }),
 };
 
 // Collector Fleet APIs
