@@ -8,6 +8,10 @@
 
 ---
 
+## Project Report
+
+For the detailed project report, see [Project Report](./PROJECT_REPORT.md).
+
 ## 1. Project Overview
 The **Smart Waste Management System (SWMS)** is a complete, realistic, modular, secure, and maintainable full-stack platform engineered to solve real-world urban waste problems:
 - **Improper Segregation & Mixing**: Real-time image classification across 8 waste categories using PyTorch MobileNetV2 vision models.
@@ -311,4 +315,3 @@ npm test
 
 ## 14. License
 Developed for academic, research, and demonstration purposes under the MIT License.
-
