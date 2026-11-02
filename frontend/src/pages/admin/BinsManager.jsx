@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { binsAPI } from '../../services/api';
+import { DEFAULT_INSTALLED_BINS } from '../../components/LeafletMap';
 import StatusBadge from '../../components/StatusBadge';
 import { getCurrentUserLocation } from '../../services/locationService';
 import {
@@ -118,6 +119,9 @@ export default function BinsManager() {
 
   const [formError, setFormError] = useState('');
   const [message, setMessage] = useState('');
+
+  const displayBins = bins.length > 0 ? bins : DEFAULT_INSTALLED_BINS;
+  const showingDemoBins = bins.length === 0;
 
   const fetchBins = async () => {
     setLoading(true);
@@ -300,6 +304,12 @@ export default function BinsManager() {
         </div>
       )}
 
+      {showingDemoBins && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs">
+          Showing read-only sample bins because the backend has no registered bins yet. Add a bin or seed the backend to manage live records.
+        </div>
+      )}
+
       {/* Bins Table */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
         <div className="overflow-x-auto">
@@ -317,7 +327,7 @@ export default function BinsManager() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {bins.map((b) => (
+              {displayBins.map((b) => (
                 <tr key={b.id} className="hover:bg-slate-50/70 transition">
                   <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
@@ -362,6 +372,7 @@ export default function BinsManager() {
                     {/* Relocate & Edit Button */}
                     <button
                       onClick={() => handleOpenEditModal(b)}
+                      disabled={showingDemoBins}
                       className="px-2.5 py-1 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition inline-flex items-center gap-1 shadow-2xs"
                       title="Relocate & Edit Smart Bin Coordinates"
                     >
@@ -372,6 +383,7 @@ export default function BinsManager() {
                     {/* Forecast Button */}
                     <button
                       onClick={() => handlePredict(b)}
+                      disabled={showingDemoBins}
                       className="px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition inline-flex items-center gap-1"
                       title="Run Predictive Analytics"
                     >
@@ -382,6 +394,7 @@ export default function BinsManager() {
                     {/* Delete Button */}
                     <button
                       onClick={() => handleDeleteBin(b.id, b.bin_code)}
+                      disabled={showingDemoBins}
                       className="p-1.5 text-slate-400 hover:text-rose-600 transition rounded-lg hover:bg-rose-50"
                       title="Delete Bin"
                     >

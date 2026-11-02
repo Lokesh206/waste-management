@@ -182,7 +182,11 @@ From the root directory:
 npm run dev
 ```
 - **Backend API**: `http://localhost:5000` (API documentation at `/api/health`)
-- **React Frontend**: `http://localhost:5173`
+- **React Frontend**: `http://localhost:5173` (open this on the computer running the app; browsers allow GPS on localhost).
+
+Allow location permission in the browser. A LAN address such as `http://10.x.x.x:5173` is not a secure context; phones and other computers require a trusted HTTPS deployment.
+
+The map requests a fresh, high-accuracy device location and displays the accuracy reported by the browser. The browser may provide a Wi-Fi/network estimate instead of a GPS fix; for better accuracy, enable device Location Services and Precise Location, and use a phone or computer with GPS hardware outdoors. A map API key cannot improve the device's GPS accuracy.
 
 ---
 

@@ -56,38 +56,83 @@ export function estimateWalkingTime(distanceKm) {
  * Get current browser GPS location with high accuracy and sensible timeouts
  */
 export function getCurrentUserLocation(options = {}) {
-  const { enableHighAccuracy = true, timeout = 9000, maximumAge = 5000 } = options;
+  const { enableHighAccuracy = true, timeout = 30000, maximumAge = 0, desiredAccuracy = 100 } = options;
 
   return new Promise((resolve, reject) => {
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      return reject(
+        new Error(
+          'This address does not allow browser GPS. On the computer running the app, open http://localhost:5173; other devices require a trusted HTTPS address.'
+        )
+      );
+    }
+
     if (typeof window === 'undefined' || !navigator?.geolocation) {
       return reject(new Error('Geolocation is not supported by your browser or environment.'));
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        resolve({
+    let watchId = null;
+    let timeoutId;
+    let bestPosition = null;
+    let settled = false;
+
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      clearLiveLocationWatch(watchId);
+
+      if (bestPosition) {
+        resolve(bestPosition);
+      } else {
+        reject(error || new Error('No device location fix was received.'));
+      }
+    };
+
+    const onPosition = (pos) => {
+      const location = {
           latitude: parseFloat(pos.coords.latitude.toFixed(6)),
           longitude: parseFloat(pos.coords.longitude.toFixed(6)),
-          accuracy: Math.round(pos.coords.accuracy || 10),
+          accuracy: Math.max(1, Math.round(pos.coords.accuracy)),
           altitude: pos.coords.altitude,
           heading: pos.coords.heading,
           speed: pos.coords.speed,
           timestamp: pos.timestamp,
-        });
-      },
-      (err) => {
-        let msg = 'Failed to obtain live GPS location.';
-        if (err.code === 1) {
-          msg = 'Location permission was denied. Please allow location access in your browser settings.';
-        } else if (err.code === 2) {
-          msg = 'Position unavailable. GPS signal could not be acquired.';
-        } else if (err.code === 3) {
-          msg = 'GPS request timed out. Retrying with network location...';
-        }
-        reject(new Error(msg));
-      },
-      { enableHighAccuracy, timeout, maximumAge }
-    );
+      };
+
+      if (!bestPosition || location.accuracy < bestPosition.accuracy) {
+        bestPosition = location;
+      }
+      if (bestPosition.accuracy <= desiredAccuracy) {
+        finish();
+      }
+    };
+
+    const onError = (err) => {
+      let message = 'Failed to obtain device location.';
+      if (err.code === 1) {
+        message = 'Location permission was denied. Allow location access in your browser and device settings.';
+      } else if (err.code === 2) {
+        message = 'Device location is unavailable. Turn on Location Services and GPS, then try again.';
+      } else if (err.code === 3) {
+        message = 'No GPS fix arrived in time. Move outdoors and check that device Location Services are on.';
+      }
+      finish(new Error(message));
+    };
+
+    timeoutId = setTimeout(() => {
+      finish(
+        new Error(
+          'No device location fix arrived in time. Turn on Precise Location/GPS and try again outdoors.'
+        )
+      );
+    }, timeout);
+
+    watchId = navigator.geolocation.watchPosition(onPosition, onError, {
+      enableHighAccuracy,
+      timeout,
+      maximumAge,
+    });
   });
 }
 
@@ -95,12 +140,23 @@ export function getCurrentUserLocation(options = {}) {
  * Watch continuous live GPS location changes (for navigation and live tracking)
  */
 export function watchLiveLocation(onSuccess, onError, options = {}) {
+  if (typeof window !== 'undefined' && window.isSecureContext === false) {
+    if (onError) {
+      onError(
+        new Error(
+          'This address does not allow browser GPS. On the computer running the app, open http://localhost:5173; other devices require a trusted HTTPS address.'
+        )
+      );
+    }
+    return null;
+  }
+
   if (typeof window === 'undefined' || !navigator?.geolocation) {
     if (onError) onError(new Error('Geolocation not supported.'));
     return null;
   }
 
-  const { enableHighAccuracy = true, timeout = 12000, maximumAge = 2000 } = options;
+  const { enableHighAccuracy = true, timeout = 30000, maximumAge = 0 } = options;
 
   const watchId = navigator.geolocation.watchPosition(
     (pos) => {
@@ -108,7 +164,7 @@ export function watchLiveLocation(onSuccess, onError, options = {}) {
         onSuccess({
           latitude: parseFloat(pos.coords.latitude.toFixed(6)),
           longitude: parseFloat(pos.coords.longitude.toFixed(6)),
-          accuracy: Math.round(pos.coords.accuracy || 10),
+          accuracy: Math.max(1, Math.round(pos.coords.accuracy)),
           speed: pos.coords.speed,
           heading: pos.coords.heading,
           timestamp: pos.timestamp,

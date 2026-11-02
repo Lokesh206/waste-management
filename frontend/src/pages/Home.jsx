@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { binsAPI, wasteAPI, complaintsAPI, iotAPI } from '../services/api';
-import LeafletMap from '../components/LeafletMap';
+import LeafletMap, { DEFAULT_INSTALLED_BINS } from '../components/LeafletMap';
 import StatusBadge from '../components/StatusBadge';
 import BinInspectorModal from '../components/BinInspectorModal';
 import { fetchRoadRoute, sampleRoadWaypoints } from '../services/roadRoutingService';
@@ -355,12 +355,15 @@ export default function Home() {
   };
 
   // Calculations
-  const criticalBins = bins.filter((b) => b.status === 'Critical' || b.current_fill_percentage >= 91);
-  const almostFullBins = bins.filter((b) => b.status === 'Almost Full' || (b.current_fill_percentage >= 76 && b.current_fill_percentage < 91));
-  const avgFill = bins.length > 0 ? Math.round(bins.reduce((sum, b) => sum + b.current_fill_percentage, 0) / bins.length) : 52;
+  const displayBins = bins.length > 0 ? bins : DEFAULT_INSTALLED_BINS;
+  const showingDemoBins = bins.length === 0;
+  const displayCriticalBins = displayBins.filter((b) => b.status === 'Critical' || b.current_fill_percentage >= 91);
+  const avgFill = displayBins.length > 0
+    ? Math.round(displayBins.reduce((sum, b) => sum + b.current_fill_percentage, 0) / displayBins.length)
+    : 0;
 
   // Filtered bins for side registry (All bins accept all waste streams)
-  const filteredBins = bins.filter((b) => {
+  const filteredBins = displayBins.filter((b) => {
     const matchSearch =
       b.bin_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.location_name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -371,7 +374,7 @@ export default function Home() {
     <div className="relative w-full h-[calc(100vh-4.2rem)] overflow-hidden bg-slate-950 font-sans text-slate-100 flex flex-col">
       {/* 1. TOP FLOATING TELEMETRY COMMAND TICKER */}
       <div className="absolute top-3 left-4 right-4 z-20 pointer-events-none">
-        <div className="glass-hud p-3 sm:p-3.5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 pointer-events-auto border border-slate-700/70 shadow-2xl">
+        <div className="glass-hud p-3 sm:p-3.5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 border border-slate-700/70 shadow-2xl">
           {/* Municipal Ingestion Status */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-700/80">
@@ -385,15 +388,15 @@ export default function Home() {
             {/* Quick Metrics Chips */}
             <div className="hidden sm:flex items-center gap-2 text-xs">
               <div className="px-2.5 py-1 rounded-xl bg-slate-800/80 border border-slate-700 font-semibold text-slate-300">
-                <span className="text-white font-bold">{bins.length}</span> Monitored Nodes
+                <span className="text-white font-bold">{displayBins.length}</span> {showingDemoBins ? 'Demo Nodes' : 'Monitored Nodes'}
               </div>
               <div className="px-2.5 py-1 rounded-xl bg-slate-800/80 border border-slate-700 font-semibold text-slate-300">
                 Avg Fill: <span className="text-emerald-400 font-bold">{avgFill}%</span>
               </div>
-              {criticalBins.length > 0 ? (
+              {displayCriticalBins.length > 0 ? (
                 <div className="px-2.5 py-1 rounded-xl bg-rose-950/80 border border-rose-700/80 text-rose-300 font-bold flex items-center gap-1 animate-pulse">
                   <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>{criticalBins.length} Critical Overflow Risk</span>
+                  <span>{displayCriticalBins.length} Critical Overflow Risk</span>
                 </div>
               ) : (
                 <div className="px-2.5 py-1 rounded-xl bg-emerald-950/60 border border-emerald-700/60 text-emerald-300 font-bold">
@@ -414,7 +417,7 @@ export default function Home() {
       {/* 2. FULL IMMERSIVE MAP CANVAS */}
       <div className="w-full h-full relative z-0">
         <LeafletMap
-          bins={bins}
+          bins={displayBins}
           truckPosition={truckPos}
           onBinClick={(bin) => setSelectedBin(bin)}
           onDispatchBin={handleDispatchToBin}
@@ -441,7 +444,9 @@ export default function Home() {
                 </div>
                 <div>
                   <h2 className="font-extrabold text-xs text-white">Smart Bins Registry</h2>
-                  <p className="text-[10px] text-emerald-400 font-semibold">{filteredBins.length} All-in-One AI Nodes</p>
+                  <p className="text-[10px] text-emerald-400 font-semibold">
+                    {filteredBins.length} {showingDemoBins ? 'Demo Nodes' : 'All-in-One AI Nodes'}
+                  </p>
                 </div>
               </div>
             ) : null}
@@ -470,6 +475,12 @@ export default function Home() {
               </div>
 
               {/* Multi-Stream Acceptance Badge Banner */}
+              {showingDemoBins && (
+                <p className="text-[10px] text-amber-200 bg-amber-950/50 border border-amber-700/40 rounded-xl px-2.5 py-2">
+                  Showing sample bins. Connect and seed the backend to load live registry data.
+                </p>
+              )}
+
               <div className="p-2 rounded-xl bg-slate-900/95 border border-purple-800/40 text-[10px] flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-purple-300 font-bold">
                   <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
@@ -487,6 +498,11 @@ export default function Home() {
 
               {/* Bins List with Visual Liquid Cylinders & 6-Chamber Indicators */}
               <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+                {filteredBins.length === 0 && (
+                  <p className="p-3 text-center text-xs text-slate-400">
+                    No bins match your search.
+                  </p>
+                )}
                 {[...filteredBins]
                   .sort((a, b) => b.current_fill_percentage - a.current_fill_percentage)
                   .map((bin) => {

@@ -34,6 +34,23 @@ import {
   getGoogleMapsDirectionsUrl,
 } from '../services/locationService';
 
+const DEFAULT_MAP_CENTER = [12.9716, 77.5946];
+const EMPTY_ARRAY = Object.freeze([]);
+const PRECISE_LOCATION_ACCURACY_METERS = 100;
+
+function formatAccuracy(accuracy) {
+  return accuracy >= 1000
+    ? `±${(accuracy / 1000).toFixed(1)} km`
+    : `±${accuracy} m`;
+}
+
+function getLocationStatus(accuracy) {
+  if (accuracy > PRECISE_LOCATION_ACCURACY_METERS) {
+    return `⚠️ Approximate device location (${formatAccuracy(accuracy)}). Enable Precise Location/GPS and try outdoors for a better fix.`;
+  }
+  return `✓ High-accuracy device location (${formatAccuracy(accuracy)}).`;
+}
+
 // Default installed bins pre-loaded for fallback so map is never empty
 export const DEFAULT_INSTALLED_BINS = [
   { id: 1, bin_code: 'BIN-001', location_name: 'Central Plaza North Wing', latitude: 12.9719, longitude: 77.5937, capacity: 100, current_fill_percentage: 92.0, waste_type: 'All-in-One Multi-Waste Bin', status: 'Critical', battery_level_pct: 95, gas_level_ppm: 78, ward: 'Ward 101' },
@@ -102,7 +119,7 @@ const userLocationIcon = L.divIcon({
       <div style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(59, 130, 246, 0.4); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
       <div style="width: 22px; height: 22px; border-radius: 50%; background: #2563eb; border: 3px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.6); position: relative; z-index: 2;"></div>
       <div style="position: absolute; top: 26px; background: #0f172a; color: #93c5fd; padding: 2px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; white-space: nowrap; border: 1px solid rgba(59, 130, 246, 0.6); box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
-        📍 You Are Here
+        📍 Device Location
       </div>
     </div>
   `,
@@ -112,7 +129,7 @@ const userLocationIcon = L.divIcon({
   popupAnchor: [0, -22],
 });
 
-// Live Moving Garbage Collection Vehicle (Truck "Alpha-01")
+// Demo garbage collection vehicle (Truck "Alpha-01")
 const truckIcon = L.divIcon({
   html: `
     <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
@@ -121,7 +138,7 @@ const truckIcon = L.divIcon({
         <span style="font-size: 20px;">🚚</span>
       </div>
       <div style="background: #0f172a; color: #60a5fa; padding: 2px 8px; border-radius: 8px; font-size: 9px; font-weight: 800; white-space: nowrap; margin-top: 3px; box-shadow: 0 2px 8px rgba(0,0,0,0.5); border: 1px solid rgba(59, 130, 246, 0.5);">
-        Alpha-01 • Active
+        Alpha-01 • Simulated
       </div>
     </div>
   `,
@@ -165,6 +182,7 @@ const complaintIcon = L.divIcon({
 // Auto-Fit Bounds helper - only fits when allowed
 function AutoFitBounds({ bins, enabled = true }) {
   const map = useMap();
+  const binCoordinates = bins?.map((bin) => `${bin.latitude},${bin.longitude}`).join('|');
   useEffect(() => {
     if (enabled && bins && bins.length > 0) {
       try {
@@ -176,7 +194,7 @@ function AutoFitBounds({ bins, enabled = true }) {
         // Safe catch for invalid bounds
       }
     }
-  }, [bins, map, enabled]);
+  }, [binCoordinates, map, enabled]);
   return null;
 }
 
@@ -193,43 +211,50 @@ function LocationPicker({ onLocationSelect }) {
 }
 
 // Recenter component with smooth flyTo animation
-function MapController({ center, zoom }) {
+function MapController({ center }) {
   const map = useMap();
   useEffect(() => {
     if (center && Array.isArray(center) && center.length === 2 && !isNaN(center[0]) && !isNaN(center[1])) {
-      map.flyTo(center, zoom || map.getZoom(), { duration: 1.2 });
+      map.flyTo(center, map.getZoom(), { duration: 1.2 });
     }
-  }, [center, zoom, map]);
+  }, [center, map]);
   return null;
 }
 
 export default function LeafletMap({
-  bins = [],
-  complaints = [],
-  routeStops = [],
+  bins = EMPTY_ARRAY,
+  complaints = EMPTY_ARRAY,
+  routeStops = EMPTY_ARRAY,
   truckPosition = null,
   selectedLocation,
   onLocationSelect,
-  center = [12.9716, 77.5946],
+  center = DEFAULT_MAP_CENTER,
   zoom = 14,
   height = '100%',
   onBinClick,
   onDispatchBin,
   dispatchTargetBin,
   isDispatching,
-  activeRoadRoute = [],
+  activeRoadRoute = EMPTY_ARRAY,
   disableDefaultFallback = false,
   userLocation: externalUserLocation = null,
   onUserLocationChange,
 }) {
   const [userLocation, setUserLocation] = useState(externalUserLocation);
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  const [gpsTimestamp, setGpsTimestamp] = useState(null);
   const [isWatchingLive, setIsWatchingLive] = useState(false);
   const [liveWatchId, setLiveWatchId] = useState(null);
-  const [locationStatus, setLocationStatus] = useState('');
+  const [locationStatus, setLocationStatus] = useState(() => {
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      return 'Live GPS is blocked on this network address. On the computer running the app, open http://localhost:5173.';
+    }
+    return '';
+  });
   const [activeCenter, setActiveCenter] = useState(center);
   const [roadRouteStops, setRoadRouteStops] = useState([]);
   const [selectedBinData, setSelectedBinData] = useState(null);
+  const routeStopsKey = routeStops.map((stop) => `${stop.latitude},${stop.longitude}`).join('|');
 
   // Sync external user location if provided
   useEffect(() => {
@@ -240,10 +265,12 @@ export default function LeafletMap({
 
   // Sync center prop if changed externally
   useEffect(() => {
-    if (center) {
-      setActiveCenter(center);
+    if (Array.isArray(center) && center.length === 2) {
+      setActiveCenter((currentCenter) =>
+        currentCenter[0] === center[0] && currentCenter[1] === center[1] ? currentCenter : center
+      );
     }
-  }, [center]);
+  }, [center?.[0], center?.[1]]);
 
   // Cleanup GPS watcher on unmount
   useEffect(() => {
@@ -269,7 +296,7 @@ export default function LeafletMap({
     return () => {
       isMounted = false;
     };
-  }, [routeStops]);
+  }, [routeStopsKey]);
 
   // Map Basemap Provider configuration (100% Free, Keyless, Watermark-Free)
   const [showLayersModal, setShowLayersModal] = useState(false);
@@ -313,14 +340,23 @@ export default function LeafletMap({
 
   // Handle High-Accuracy Geolocation Lock
   const handleLocateMe = async () => {
-    setLocationStatus('🛰️ Acquiring high-accuracy live GPS fix...');
+    setUserLocation(null);
+    setGpsAccuracy(null);
+    setGpsTimestamp(null);
+    setLocationStatus('🛰️ Waiting up to 30 seconds for a precise GPS fix...');
     try {
-      const pos = await getCurrentUserLocation({ enableHighAccuracy: true, timeout: 9000 });
+      const pos = await getCurrentUserLocation({
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 0,
+        desiredAccuracy: PRECISE_LOCATION_ACCURACY_METERS,
+      });
       const coords = [pos.latitude, pos.longitude];
       setUserLocation(coords);
       setGpsAccuracy(pos.accuracy);
+      setGpsTimestamp(pos.timestamp);
       setActiveCenter(coords);
-      setLocationStatus(`✓ Live GPS Locked! (Accuracy: ±${pos.accuracy}m)`);
+      setLocationStatus(getLocationStatus(pos.accuracy));
 
       if (onUserLocationChange) {
         onUserLocationChange(coords, pos);
@@ -328,16 +364,12 @@ export default function LeafletMap({
       if (onLocationSelect) {
         onLocationSelect(pos.latitude, pos.longitude);
       }
-      setTimeout(() => setLocationStatus(''), 5000);
+      if (pos.accuracy <= PRECISE_LOCATION_ACCURACY_METERS) {
+        setTimeout(() => setLocationStatus(''), 5000);
+      }
     } catch (err) {
       console.warn('Geolocation error:', err.message);
-      const fallback = [12.9716, 77.5946];
-      setUserLocation(fallback);
-      setActiveCenter(fallback);
-      setLocationStatus(`⚠️ ${err.message}. Centered to City Hub.`);
-      if (onUserLocationChange) onUserLocationChange(fallback);
-      if (onLocationSelect) onLocationSelect(fallback[0], fallback[1]);
-      setTimeout(() => setLocationStatus(''), 6000);
+      setLocationStatus(`⚠️ Unable to get your live location: ${err.message}`);
     }
   };
 
@@ -350,24 +382,32 @@ export default function LeafletMap({
       setLocationStatus('Live GPS tracking paused.');
       setTimeout(() => setLocationStatus(''), 3000);
     } else {
-      setLocationStatus('🛰️ Live continuous GPS tracking engaged...');
+      setLocationStatus('🛰️ Waiting for a fresh device GPS fix...');
       const id = watchLiveLocation(
         (pos) => {
           const coords = [pos.latitude, pos.longitude];
           setUserLocation(coords);
           setGpsAccuracy(pos.accuracy);
+          setGpsTimestamp(pos.timestamp);
           setActiveCenter(coords);
+          setLocationStatus(getLocationStatus(pos.accuracy));
           if (onUserLocationChange) onUserLocationChange(coords, pos);
           if (onLocationSelect) onLocationSelect(pos.latitude, pos.longitude);
         },
         (err) => {
           setLocationStatus(`⚠️ GPS Tracking error: ${err.message}`);
+          setIsWatchingLive(false);
+          setLiveWatchId(null);
         },
         { enableHighAccuracy: true }
       );
       setLiveWatchId(id);
+      if (id == null) {
+        setIsWatchingLive(false);
+        return;
+      }
       setIsWatchingLive(true);
-      setLocationStatus('🟢 Live GPS Follow Mode Active (Updating continuously)');
+      setLocationStatus('🛰️ Live follow is on; waiting for the first GPS fix...');
     }
   };
 
@@ -381,6 +421,7 @@ export default function LeafletMap({
     routeStops.length > 1
       ? routeStops.map((stop) => [stop.latitude, stop.longitude])
       : [];
+  const coordinatePrecision = gpsAccuracy >= 1000 ? 2 : gpsAccuracy > 100 ? 3 : 5;
 
   return (
     <div style={{ height }} className="w-full relative overflow-hidden bg-slate-950 font-sans">
@@ -546,7 +587,7 @@ export default function LeafletMap({
         scrollWheelZoom={true}
         style={{ height: '100%', width: '100%' }}
       >
-        <MapController center={activeCenter} zoom={zoom} />
+        <MapController center={activeCenter} />
         <AutoFitBounds bins={activeBins} enabled={shouldAutoFit} />
         {onLocationSelect && <LocationPicker onLocationSelect={onLocationSelect} />}
 
@@ -616,9 +657,11 @@ export default function LeafletMap({
               <div className="p-1 min-w-[200px] font-sans">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-base">🚚</span>
-                  <strong className="text-blue-400 text-xs">Vehicle Alpha-01 (Municipal Fleet)</strong>
+                  <strong className="text-blue-400 text-xs">Vehicle Alpha-01 (Demo)</strong>
                 </div>
-                <p className="text-[11px] text-slate-300">Status: Dispatched to Priority Bins</p>
+                <p className="text-[11px] text-amber-300">
+                  {isDispatching ? 'Simulated dispatch route; this is not your GPS location.' : 'Demo position; this is not live vehicle or user GPS.'}
+                </p>
                 <div className="mt-2 text-[10px] text-slate-400 font-mono">
                   Coordinates: {truckPosition[0].toFixed(4)}, {truckPosition[1].toFixed(4)}
                 </div>
@@ -628,7 +671,7 @@ export default function LeafletMap({
         )}
 
         {/* GPS Accuracy Circle */}
-        {userLocation && gpsAccuracy && gpsAccuracy < 1500 && (
+        {userLocation && gpsAccuracy && gpsAccuracy <= 50000 && (
           <Circle
             center={userLocation}
             radius={gpsAccuracy}
@@ -647,16 +690,23 @@ export default function LeafletMap({
           <Marker position={userLocation} icon={userLocationIcon}>
             <Popup>
               <div className="p-1.5 text-xs font-sans min-w-[180px]">
-                <strong className="text-blue-400 block mb-1 text-xs">📍 Your Live GPS Location</strong>
+                <strong className="text-blue-400 block mb-1 text-xs">📍 Your Device Location</strong>
                 <p className="text-slate-300 font-mono text-[11px]">
-                  {userLocation[0].toFixed(5)}, {userLocation[1].toFixed(5)}
+                    {userLocation[0].toFixed(coordinatePrecision)}, {userLocation[1].toFixed(coordinatePrecision)}
                 </p>
                 {gpsAccuracy && (
-                  <p className="text-[10px] text-emerald-400 mt-1 font-semibold">
-                    GPS Accuracy: ±{gpsAccuracy} meters
+                  <p className={`text-[10px] mt-1 font-semibold ${
+                    gpsAccuracy > PRECISE_LOCATION_ACCURACY_METERS ? 'text-amber-400' : 'text-emerald-400'
+                  }`}>
+                    Device-reported accuracy: {formatAccuracy(gpsAccuracy)}
                   </p>
                 )}
-                {isWatchingLive && (
+                {gpsTimestamp && (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Updated: {new Date(gpsTimestamp).toLocaleTimeString()}
+                  </p>
+                )}
+                {isWatchingLive && userLocation && (
                   <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-800">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
                     Live Follow Mode Active

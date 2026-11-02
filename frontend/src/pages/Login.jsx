@@ -8,6 +8,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedDemoRole, setSelectedDemoRole] = useState('');
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -37,11 +38,11 @@ export default function Login() {
     executeLogin(email, password);
   };
 
-  // 1-Click Instant Login (fills and logs in immediately)
-  const handleInstantDemoLogin = (demoEmail, demoPass) => {
+  const handleDemoAccountSelect = (role, demoEmail, demoPass) => {
+    setSelectedDemoRole(role);
     setEmail(demoEmail);
     setPassword(demoPass);
-    executeLogin(demoEmail, demoPass);
+    setError('');
   };
 
   return (
@@ -56,22 +57,27 @@ export default function Login() {
           <p className="text-xs text-slate-500">Smart Waste Management Command & Operations</p>
         </div>
 
-        {/* 1-Click Quick Demo Sign In Bar for all 4 Roles */}
+        {/* Demo account selector */}
         <div className="p-4 rounded-2xl bg-slate-900 text-white space-y-2.5 shadow-md">
           <div className="flex items-center justify-between text-[11px] font-bold text-emerald-400">
             <span className="flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>1-Click Instant Demo Login</span>
+              <span>Choose a Demo Role</span>
             </span>
-            <span className="text-[10px] text-slate-400 font-normal">Click any role below</span>
+            <span className="text-[10px] text-slate-400 font-normal">Then sign in with password</span>
           </div>
 
           <div className="grid grid-cols-4 gap-1.5 text-xs">
             <button
               type="button"
-              onClick={() => handleInstantDemoLogin('admin@swms.com', 'admin123')}
+              onClick={() => handleDemoAccountSelect('admin', 'admin@swms.com', 'admin123')}
               disabled={loading}
-              className="py-2 px-1 rounded-xl bg-slate-800 hover:bg-rose-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-rose-500 active:scale-95"
+              aria-pressed={selectedDemoRole === 'admin'}
+              className={`py-2 px-1 rounded-xl text-white font-bold transition flex flex-col items-center gap-1 border active:scale-95 ${
+                selectedDemoRole === 'admin'
+                  ? 'bg-rose-600 border-rose-500'
+                  : 'bg-slate-800 border-slate-700 hover:bg-rose-600 hover:border-rose-500'
+              }`}
             >
               <Shield className="w-4 h-4 text-rose-400" />
               <span className="text-[10px]">Admin</span>
@@ -79,9 +85,14 @@ export default function Login() {
 
             <button
               type="button"
-              onClick={() => handleInstantDemoLogin('collector@swms.com', 'collector123')}
+              onClick={() => handleDemoAccountSelect('collector', 'collector@swms.com', 'collector123')}
               disabled={loading}
-              className="py-2 px-1 rounded-xl bg-slate-800 hover:bg-amber-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-amber-500 active:scale-95"
+              aria-pressed={selectedDemoRole === 'collector'}
+              className={`py-2 px-1 rounded-xl text-white font-bold transition flex flex-col items-center gap-1 border active:scale-95 ${
+                selectedDemoRole === 'collector'
+                  ? 'bg-amber-600 border-amber-500'
+                  : 'bg-slate-800 border-slate-700 hover:bg-amber-600 hover:border-amber-500'
+              }`}
             >
               <Truck className="w-4 h-4 text-amber-400" />
               <span className="text-[10px]">Collector</span>
@@ -89,9 +100,14 @@ export default function Login() {
 
             <button
               type="button"
-              onClick={() => handleInstantDemoLogin('citizen@swms.com', 'citizen123')}
+              onClick={() => handleDemoAccountSelect('citizen', 'citizen@swms.com', 'citizen123')}
               disabled={loading}
-              className="py-2 px-1 rounded-xl bg-slate-800 hover:bg-blue-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-blue-500 active:scale-95"
+              aria-pressed={selectedDemoRole === 'citizen'}
+              className={`py-2 px-1 rounded-xl text-white font-bold transition flex flex-col items-center gap-1 border active:scale-95 ${
+                selectedDemoRole === 'citizen'
+                  ? 'bg-blue-600 border-blue-500'
+                  : 'bg-slate-800 border-slate-700 hover:bg-blue-600 hover:border-blue-500'
+              }`}
             >
               <User className="w-4 h-4 text-blue-400" />
               <span className="text-[10px]">Citizen</span>
@@ -99,9 +115,14 @@ export default function Login() {
 
             <button
               type="button"
-              onClick={() => handleInstantDemoLogin('recycling@swms.com', 'recycling123')}
+              onClick={() => handleDemoAccountSelect('recycling_center', 'recycling@swms.com', 'recycling123')}
               disabled={loading}
-              className="py-2 px-1 rounded-xl bg-slate-800 hover:bg-emerald-600 text-white font-bold transition flex flex-col items-center gap-1 border border-slate-700 hover:border-emerald-500 active:scale-95"
+              aria-pressed={selectedDemoRole === 'recycling_center'}
+              className={`py-2 px-1 rounded-xl text-white font-bold transition flex flex-col items-center gap-1 border active:scale-95 ${
+                selectedDemoRole === 'recycling_center'
+                  ? 'bg-emerald-600 border-emerald-500'
+                  : 'bg-slate-800 border-slate-700 hover:bg-emerald-600 hover:border-emerald-500'
+              }`}
             >
               <Recycle className="w-4 h-4 text-emerald-400" />
               <span className="text-[10px]">Recycler</span>
@@ -132,7 +153,10 @@ export default function Login() {
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setSelectedDemoRole('');
+                }}
                 placeholder="name@swms.com"
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
               />
@@ -147,7 +171,10 @@ export default function Login() {
                 type="password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setSelectedDemoRole('');
+                }}
                 placeholder="••••••••"
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
               />
