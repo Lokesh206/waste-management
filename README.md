@@ -174,6 +174,8 @@ cd ..
 ```
 *This populates the SQLite database with 4 default accounts, 10 smart bins, historical readings, and initial tasks.*
 
+For an existing database, use `npm run db:seed:demo-users` from `backend/` to add any missing demo accounts without deleting or changing existing data.
+
 ### Step 3: Run Both Backend & Frontend
 From the root directory:
 ```bash
